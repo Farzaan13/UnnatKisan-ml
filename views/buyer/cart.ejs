@@ -1,0 +1,194 @@
+<% layout('/layouts/boilerplate') %>
+    <% const isBulk=buyerRole==='bulkbuyer' ; %>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0"><i class="fa-solid fa-cart-shopping"></i> My Cart</h3>
+            <a href="<%= base %>/dashboard" class="btn btn-outline-success">View More Crops</a>
+        </div>
+
+        <% if (groups.length===0) { %>
+            <div class="card p-5 text-center text-muted">
+                Your cart is empty.
+                <div class="mt-3"><a href="<%= base %>/dashboard" class="btn btn-primary">View Crops</a></div>
+            </div>
+            <% } else { %>
+
+                <% groups.forEach(g=> { %>
+                    <div class="card mb-3">
+                        <div class="card-header bg-white">
+                            <i class="fa-solid fa-user"></i> <strong>
+                                <%= g.kisanName %>
+                            </strong>
+                            <% if (g.village) { %><span class="text-muted small">, <%= g.village %></span>
+                                <% } %>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Crop</th>
+                                        <th>Rate</th>
+                                        <th>Quantity (kg)</th>
+                                        <th class="text-end">Amount</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% g.lines.forEach(l=> { %>
+                                        <tr>
+                                            <td>
+                                                <strong>
+                                                    <%= l.crop.name %>
+                                                </strong>
+                                                                 <div class="small text-muted">Min: <%= l.min %> kg</div>
+                                                        <% if (l.problem) { %>
+                                                            <div class="small text-danger">
+                                                                <%= l.problem %>
+                                                            </div>
+                                                            <% } %>
+
+                                                                <% if (l.crop.lat && l.crop.lng) { %>
+                                                                    <div class="small text-success dist"
+                                                                        data-lat="<%= l.crop.lat %>"
+                                                                        data-lng="<%= l.crop.lng %>"></div>
+                                                                    <% } %>
+                                            </td>
+                                            <td>₹<%= l.unitPrice %> / kg</td>
+                                            <td>
+                                                <form action="<%= base %>/cart/update/<%= l.crop._id %>?_method=PATCH"
+                                                    method="POST" class="d-flex gap-1">
+                                                    <input type="number" name="quantity"
+                                                        class="form-control form-control-sm" style="width: 100px;"
+                                                        min="<%= l.min %>" max="<%= l.crop.quantity %>"
+                                                        value="<%= l.qty %>" required>
+                                                    <button class="btn btn-sm btn-outline-secondary">Update</button>
+                                                </form>
+                                            </td>
+                                            <td class="text-end">₹<%= l.amount %>
+                                            </td>
+                                            <td class="text-end">
+                                                <form action="<%= base %>/cart/remove/<%= l.crop._id %>?_method=DELETE"
+                                                    method="POST">
+                                                    <button class="btn btn-sm btn-outline-danger" title="Hatao"><i
+                                                            class="fa-solid fa-trash"></i></button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        <% }) %>
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th colspan="3" class="text-end">Total</th>
+                                        <th class="text-end">₹<%= g.subtotal %>
+                                        </th>
+                                        <th></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <% }) %>
+
+                        <!-- Checkout -->
+                        <form action="<%= base %>/cart/checkout" method="POST" class="card p-3 mt-4">
+                            <h5 class="mb-3">Delivery and Payment</h5>
+
+                            <label class="form-label" for="deliveryCity">Delivery city</label>
+                            <select class="form-select mb-2" id="deliveryCity" name="deliveryCity" required>
+                                <option value="" disabled selected>Choose city</option>
+                                <% cities.forEach(c=> { %><option value="<%= c %>">
+                                        <%= c %>
+                                    </option>
+                                    <% }) %>
+                            </select>
+
+                            <label class="form-label" for="deliveryAddress">Full address</label>
+                            <textarea class="form-control mb-3" id="deliveryAddress" name="deliveryAddress" rows="2"
+                                minlength="10" maxlength="200" required
+                                placeholder="Ghar/dukaan, gali, landmark, pincode"></textarea>
+
+                            <% if (isBulk) { %>
+                                <label class="form-label">Payment method</label>
+                                <div class="mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="paymentMethod" id="payCod"
+                                            value="cod" checked>
+                                        <label class="form-check-label" for="payCod">Cash on Delivery</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="paymentMethod" id="payOnline"
+                                            value="online">
+                                        <label class="form-check-label" for="payOnline">Online (UPI / Bank
+                                            transfer)</label>
+                                    </div>
+                                </div>
+
+                                <div id="onlineBox" class="border rounded p-3 mb-3 d-none">
+                                    <div class="small text-muted mb-2">
+                                       Transfer the respective amount to each farmer separately via UPI or bank transfer, then enter that farmer's UTR below.
+The order will be shipped only after the farmer has been verified.
+                                    </div>
+                                    <% groups.forEach(g=> { %>
+                                        <label class="form-label small mb-1">
+                                            <strong>
+                                                <%= g.kisanName %>
+                                            </strong> ko ₹<%= g.subtotal %> bhejo, UTR / Transaction ID:
+                                        </label>
+                                        <input class="form-control mb-2 utr-input" name="utr_<%= g.kisanId %>"
+                                            maxlength="30" placeholder="e.g. 412345678901">
+                                        <% }) %>
+                                </div>
+                                <% } else { %>
+                                    <div class="alert alert-light border py-2 mb-3">
+                                        <i class="fa-solid fa-money-bill-wave text-success"></i>
+                                        <strong>Payment:</strong> Cash on Delivery
+                                    </div>
+                                    <% } %>
+
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                            <div class="fs-5">Grand total: <strong class="text-success">₹<%= grandTotal
+                                                        %></strong></div>
+                                            <button class="btn btn-primary">
+                                                <i class="fa-solid fa-bag-shopping"></i> Order place karo
+                                            </button>
+                                        </div>
+                                        <div class="small text-muted mt-2">A separate order will be created for each crop, and a separate receipt will be issued for it..</div>
+                        </form>
+
+                        <% if (isBulk) { %>
+                            <script>
+                                const onlineBox = document.getElementById('onlineBox');
+                                document.querySelectorAll('input[name="paymentMethod"]').forEach((r) => {
+                                    r.addEventListener('change', () => {
+                                        const online = document.getElementById('payOnline').checked;
+                                        onlineBox.classList.toggle('d-none', !online);
+                                        document.querySelectorAll('.utr-input').forEach((i) => { i.required = online; });
+                                    });
+                                });
+                            </script>
+                            <% } %>
+
+                                <script>
+                                    (function () {
+                                        const sel = document.getElementById('deliveryCity');
+                                        if (!sel) return;
+                                        const cityCoords = <% - JSON.stringify(cityCoords) %>;
+                                        const ROAD_FACTOR = 1.3;
+                                        const rad = (d) => d * Math.PI / 180;
+                                        function km(a, b) {
+                                            const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+                                            const h = Math.sin(dLat / 2) ** 2 +
+                                                Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+                                            return Math.round(2 * 6371 * Math.asin(Math.sqrt(h)) * ROAD_FACTOR);
+                                        }
+                                        sel.addEventListener('change', () => {
+                                            const to = cityCoords[sel.value];
+                                            document.querySelectorAll('.dist').forEach((el) => {
+                                                const lat = parseFloat(el.dataset.lat), lng = parseFloat(el.dataset.lng);
+                                                el.textContent = (!to || isNaN(lat) || isNaN(lng))
+                                                    ? '' : '🚚 ' + sel.value + ' tak lagbhag ' + km({ lat, lng }, to) + ' km';
+                                            });
+                                        });
+                                    })();
+                                </script>
+                                <% } %>

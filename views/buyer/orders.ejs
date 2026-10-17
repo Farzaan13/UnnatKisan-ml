@@ -1,0 +1,124 @@
+<% layout('/layouts/boilerplate') %>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">My Orders</h3>
+        <a href="<%= base %>/dashboard" class="btn btn-outline-success">
+            <i class="fa-solid fa-arrow-left"></i> View Crops
+        </a>
+    </div>
+
+    <% if (orders.length===0) { %>
+        <div class="card p-5 text-center text-muted">
+            You have not placed any orders yet.
+            <div class="mt-3">
+                <a href="<%= base %>/dashboard" class="btn btn-primary">View Crops</a>
+            </div>
+        </div>
+        <% } else { %>
+            <div class="row g-3">
+                <% orders.forEach(o=> { %>
+                    <div class="col-12">
+                        <div class="card p-3">
+                            <div class="d-flex justify-content-between flex-wrap gap-2">
+                                <div>
+                                    <h5 class="mb-1">
+                                        <%= o.crop ? o.crop.name : 'Crop removed' %>
+                                    </h5>
+                                    <div class="text-muted small">
+                                        Order date: <%= o.createdAt.toLocaleString('en-IN') %>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <%- include('../partials/statusBadge', { status: o.status }) %>
+                                        <% if (o.trackingId) { %>
+                                            <div class="small text-muted mt-1">Tracking ID: <strong>
+                                                    <%= o.trackingId %>
+                                                </strong></div>
+                                            <% } %>
+                                                <div class="small mt-1">
+                                                    <%- include('../partials/paymentBadge', { paymentMethod:
+                                                        o.paymentMethod, paymentStatus: o.paymentStatus }) %>
+                                                </div>
+
+                                                <a href="<%= base %>/orders/<%= o._id %>/confirmation"
+                                                    class="btn btn-sm btn-outline-secondary mt-2">
+                                                    View Receipt
+                                                </a>
+
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <div class="text-muted small">Quantity</div>
+                                    <div><strong>
+                                            <%= o.quantity %> kg
+                                        </strong></div>
+                                    <div class="text-muted small mt-2">Total</div>
+                                    <div class="fs-5 text-success fw-bold">₹<%= o.totalPrice %>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="text-muted small">Delivery</div>
+                                    <div><strong>
+                                            <%= o.deliveryCity || '-' %>
+                                        </strong></div>
+                                    <div class="small">
+                                        <%= o.deliveryAddress || '' %>
+                                    </div>
+                                    <% if (o.distanceKm !=null) { %>
+                                        <div class="small text-muted mt-1">
+                                            <i class="fa-solid fa-truck"></i> approximately <strong>
+                                                <%= o.distanceKm %> km
+                                            </strong>
+                                        </div>
+                                        <% } %>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="text-muted small">Farmer</div>
+                                    <% if (o.kisan) { %>
+                                        <div><strong>
+                                                <%= o.kisan.name %>
+                                            </strong>
+                                            <%= o.kisan.village ? ', ' + o.kisan.village : '' %>
+                                        </div>
+                                        <div class="small"><i class="fa-solid fa-phone"></i>
+                                            <%= o.kisan.phone %>
+                                        </div>
+                                        <% } else { %>
+                                            <div>-</div>
+                                            <% } %>
+                                </div>
+                            </div>
+
+                            <% if (o.statusHistory && o.statusHistory.length) { %>
+                                <hr>
+                                <div class="small text-muted mb-1">Order timeline</div>
+                                <ul class="list-unstyled mb-0 small">
+                                    <% o.statusHistory.forEach(h=> { %>
+                                        <li>
+                                            <i class="fa-solid fa-circle-check text-success"></i>
+                                            <span class="text-capitalize">
+                                                <%= h.status %>
+                                            </span>
+                                            <span class="text-muted">- <%= new Date(h.at).toLocaleString('en-IN') %>
+                                            </span>
+                                        </li>
+                                        <% }) %>
+                                </ul>
+                                <% } %>
+
+                                    <% if (o.status==='rejected' ) { %>
+                                        <div class="alert alert-danger mt-3 mb-0 py-2">
+                                           The farmer has rejected this order. You may order a different crop.
+                                        </div>
+                                        <% } %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+            <% } %>

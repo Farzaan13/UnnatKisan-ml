@@ -1,0 +1,62 @@
+<% layout('/layouts/boilerplate') %>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0"><i class="fa-solid fa-chart-line text-success"></i> Demand insights</h3>
+  <a href="/kisan/dashboard" class="btn btn-outline-success">Dashboard</a>
+</div>
+<p class="text-muted">
+ Demand for the next 4 weeks based on orders from the past 8 weeks. W0 = the last 7 days.
+</p>
+
+<% if (insights.length === 0) { %>
+  <div class="card p-5 text-center text-muted">First add some crops to see demand insights.</div>
+<% } else { %>
+  <div class="row g-4">
+    <% insights.forEach(i => { %>
+      <div class="col-lg-6">
+        <div class="card p-3 h-100">
+          <div class="d-flex justify-content-between">
+            <h5 class="text-capitalize"><%= i.name %></h5>
+            <span class="badge text-bg-<%= i.trend === 'up' ? 'success' : i.trend === 'down' ? 'danger' : 'secondary' %>">
+              <%= i.trend === 'up' ? 'Demand increasing' : i.trend === 'down' ? 'Demand decreasing' : 'Demand stable' %>
+            </span>
+          </div>
+          <canvas class="demand-chart my-2" height="150"
+                  data-series="<%= JSON.stringify(i.series) %>"
+                  data-predicted="<%= JSON.stringify(i.predicted) %>"></canvas>
+          <p class="mb-1 small">Your stock: <strong><%= i.stock %> kg</strong> |
+             Next 4 weeks: <strong><%= i.predicted.join(', ') %> kg</strong></p>
+          <p class="mb-0"><i class="fa-solid fa-lightbulb text-warning"></i> <%= i.advice %></p>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  document.querySelectorAll('.demand-chart').forEach((el) => {
+    const series = JSON.parse(el.dataset.series);
+    const predicted = JSON.parse(el.dataset.predicted);
+    const n = series.length;
+
+    const labels = [
+      ...series.map((_, i) => 'W' + (i - (n - 1))),
+      ...predicted.map((_, k) => 'W+' + (k + 1))
+    ];
+    const actual = [...series, ...predicted.map(() => null)];
+    const future = [...series.map((_, i) => (i === n - 1 ? series[i] : null)), ...predicted];
+
+    new Chart(el, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Real demand (kg)', data: actual, borderColor: '#2e7d32', backgroundColor: '#2e7d32', tension: 0.3 },
+          { label: 'Forecast (kg)', data: future, borderColor: '#f9a825', backgroundColor: '#f9a825', borderDash: [6, 4], tension: 0.3 }
+        ]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+  });
+</script>

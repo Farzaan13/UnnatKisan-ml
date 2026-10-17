@@ -1,0 +1,12 @@
+<% layout('/layouts/boilerplate') %>
+
+<div class="mx-auto" style="max-width: 760px;">
+  <div class="card p-4">
+    <h3 class="mb-4"><i class="fa-solid fa-pen text-success"></i> Crop edit </h3>
+    <%- include('_cropForm', {
+      crop: crop,
+      action: '/kisan/crops/' + crop._id + '?_method=PUT',
+      button: 'Update karo'
+    }) %>
+  </div>
+</div>

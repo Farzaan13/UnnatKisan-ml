@@ -1,0 +1,31 @@
+
+<%
+  const method = typeof paymentMethod !== 'undefined'
+    ? paymentMethod
+    : '';
+
+  const status = typeof paymentStatus !== 'undefined'
+    ? paymentStatus
+    : 'pending';
+
+  let color = 'secondary';
+  let label = status || 'Pending';
+
+  if (status === 'paid') {
+    color = 'success';
+    label = 'Paid';
+  } else if (status === 'submitted') {
+    color = 'info';
+    label = 'Verification pending';
+  } else if (status === 'failed') {
+    color = 'danger';
+    label = 'Proof rejected';
+  } else if (status === 'pending') {
+    color = 'warning';
+    label = method === 'online'
+      ? 'Payment pending'
+      : 'Pay on delivery';
+  }
+%>
+
+<span class="badge text-bg-<%= color %>"><%= label %></span>

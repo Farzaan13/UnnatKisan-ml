@@ -1,0 +1,122 @@
+<% layout('/layouts/boilerplate') %>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Received orders</h3>
+    <a href="/kisan/dashboard" class="btn btn-outline-success">Dashboard</a>
+  </div>
+
+  <% if (orders.length===0) { %>
+    <div class="card p-5 text-center text-muted">No order has been received yet.</div>
+    <% } else { %>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Crop</th>
+                <th>Buyer</th>
+                <th>Quantity</th>
+                <th>Total</th>
+                <th>Type</th>
+                <th>City</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% orders.forEach(o=> { %>
+                <tr>
+                  <td>
+                    <%= o.crop ? o.crop.name : 'Crop Removed' %>
+                  </td>
+                  <td>
+                    <%= o.buyer ? o.buyer.name : '-' %>
+                      <% if (o.buyer && o.buyer.businessName) { %><br><small class="text-muted">
+                          <%= o.buyer.businessName %>
+                        </small>
+                        <% } %>
+                          <% if (o.buyer) { %><br><small class="text-muted"><i class="fa-solid fa-phone"></i>
+                              <%= o.buyer.phone %>
+                            </small>
+                            <% } %>
+                  </td>
+                  <td>
+                    <%= o.quantity %> kg
+                  </td>
+                  <td>₹<%= o.totalPrice %>
+                  </td>
+                  <td><span class="badge text-bg-<%= o.orderType === 'bulk' ? 'dark' : 'secondary' %>">
+                      <%= o.orderType %>
+                    </span></td>
+                  <td>
+                    <%= o.deliveryCity || '-' %>
+                  </td>
+
+                  <td>
+                    <%= o.deliveryCity || '-' %>
+                      <% if (o.distanceKm !=null) { %><br><small class="text-muted">~<%= o.distanceKm %> km</small>
+                        <% } %>
+                  </td>
+                  <td><%- include('../partials/statusBadge', { status: o.status }) %></td>
+                  <td><%- include('../partials/paymentBadge', { paymentStatus: o.paymentStatus }) %></td>
+                  <td>
+                    <%- include('../partials/paymentBadge', { paymentMethod: o.paymentMethod, paymentStatus:
+                      o.paymentStatus }) %>
+                      <% if (o.paymentMethod==='online' ) { %>
+                        <div class="small mt-1">UTR: <strong>
+                            <%= o.transactionId %>
+                          </strong></div>
+                        <% if (o.paymentProof) { %>
+                          <a href="<%= o.paymentProof %>" target="_blank" class="small">Screenshot</a>
+                          <% } %>
+                            <% if (o.paymentStatus==='submitted' ) { %>
+                              <div class="mt-1 d-flex gap-1">
+                                <form action="/kisan/orders/<%= o._id %>/payment/verify?_method=PATCH" method="POST">
+                                  <button class="btn btn-sm btn-success">Verify</button>
+                                </form>
+                                <form action="/kisan/orders/<%= o._id %>/payment/reject?_method=PATCH" method="POST"
+                                  onsubmit="return confirm('Payment proof reject karein?');">
+                                  <button class="btn btn-sm btn-outline-danger">Reject</button>
+                                </form>
+                              </div>
+                              <% } %>
+                                <% } %>
+                  </td>
+
+                  <td>
+                    <% if (o.status==='pending' ) { %>
+                      <form action="/kisan/orders/<%= o._id %>/accept?_method=PATCH" method="POST" class="d-inline">
+                        <button class="btn btn-sm btn-success">Accept</button>
+                      </form>
+                      <form action="/kisan/orders/<%= o._id %>/reject?_method=PATCH" method="POST" class="d-inline"
+                        onsubmit="return confirm('Order reject karein?');">
+                        <button class="btn btn-sm btn-outline-danger">Reject</button>
+                      </form>
+                      <% } else if (o.status==='accepted' ) { %>
+                        <form action="/kisan/orders/<%= o._id %>/ship?_method=PATCH" method="POST" class="d-inline">
+                          <button class="btn btn-sm btn-primary">Shipped</button>
+                        </form>
+
+                        <% if (o.paymentStatus==='failed' ) { %>
+                          <form action="/kisan/orders/<%= o._id %>/reject?_method=PATCH" method="POST" class="d-inline"
+                            onsubmit="return confirm('Payment fail hui hai. Order reject karke stock wapas karein?');">
+                            <button class="btn btn-sm btn-outline-danger">Reject order</button>
+                          </form>
+                          <% } %>
+                            <% } else if (o.status==='shipped' ) { %>
+                              <form action="/kisan/orders/<%= o._id %>/deliver?_method=PATCH" method="POST"
+                                class="d-inline">
+                                <button class="btn btn-sm btn-success">Delivered</button>
+                              </form>
+                              <% } else { %>
+                                <span class="text-muted">-</span>
+                                <% } %>
+                  </td>
+                </tr>
+                <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <% } %>

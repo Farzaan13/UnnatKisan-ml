@@ -1,0 +1,50 @@
+<%
+  const mine = currentUser && String(crop.kisan) === String(currentUser.id);
+  const emoji = cropEmoji(crop.name, crop.category);
+%>
+<article class="crop cat-<%= crop.category %>">
+  <div class="crop-media">
+    <% if (crop.image) { %>
+      <img src="<%= crop.image %>" alt="<%= crop.name %>" loading="lazy">
+    <% } else { %>
+      <span class="crop-emoji" aria-hidden="true"><%= emoji %></span>
+    <% } %>
+    <span class="rate-tag">₹<%= crop.priceFor(viewRole) %><small>/kg</small></span>
+    <% if (crop.sellerRole === 'bulkbuyer') { %>
+      <span class="seller-chip">Bulk buyer</span>
+    <% } %>
+     <% if (crop.sellerRole === 'kisan') { %>
+      <span class="seller-chip">Farmer</span>
+    <% } %>
+  </div>
+
+  <div class="crop-body">
+    <h3 class="crop-name"><%= crop.name %></h3>
+    <% if (viewRole === 'bulkbuyer') { %>
+      <span class="badge text-bg-dark mb-1">Bulk rate</span>
+    <% } %>
+    <ul class="crop-facts">
+      <li><i class="fa-solid fa-box fa-fw"></i> <%= crop.quantity %> kg available</li>
+      <li><i class="fa-solid fa-scale-balanced fa-fw"></i> Min order <%= crop.minQtyFor(viewRole) %> kg</li>
+      <% if (crop.location) { %>
+        <li><i class="fa-solid fa-location-dot fa-fw"></i> <%= crop.location %></li>
+      <% } %>
+    </ul>
+  </div>
+
+  <div class="crop-cta">
+    <% if (!currentUser) { %>
+      <a href="/login" class="btn btn-outline-primary w-100">
+        <i class="fa-solid fa-lock"></i> Login For Order
+      </a>
+    <% } else if (mine) { %>
+      <span class="btn btn-light w-100 disabled">Aapki crop</span>
+    <% } else if (currentUser.role === 'customer') { %>
+      <a href="/customer/crops/<%= crop._id %>" class="btn btn-primary w-100">See & Order</a>
+    <% } else if (currentUser.role === 'bulkbuyer') { %>
+      <a href="/buyer/crops/<%= crop._id %>" class="btn btn-primary w-100">Order in bulk</a>
+    <% } else { %>
+      <div class="small text-muted text-center">A buyer account is required for placing an order.</div>
+    <% } %>
+  </div>
+</article>

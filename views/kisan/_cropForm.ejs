@@ -1,0 +1,259 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+
+<form action="<%= action %>" method="POST" enctype="multipart/form-data" id="cropForm">
+  <div class="row g-3">
+    <div class="col-md-8">
+      <label class="form-label" for="name">Crop Name</label>
+      <input class="form-control" id="name" name="name" value="<%= crop.name || '' %>" placeholder="Like: Tomato, Wheat"
+        required>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label" for="category">Category</label>
+      <select class="form-select" id="category" name="category">
+        <% ['vegetable', 'fruit' , 'grain' , 'pulse' , 'other' ].forEach(c=> { %>
+          <option value="<%= c %>" <%=crop.category===c ? 'selected' : '' %>><%= c %>
+          </option>
+          <% }) %>
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="price">Customer price (₹ per kg)</label>
+      <input class="form-control" type="number" step="0.01" min="0.01" id="price" name="price"
+        value="<%= crop.price || '' %>" required>
+      <div class="form-text">Retail customers will see this rate.</div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label" for="bulkPrice">Bulk buyer price (₹ per kg)</label>
+      <input class="form-control" type="number" step="0.01" min="0.01" id="bulkPrice" name="bulkPrice"
+        value="<%= crop.bulkPrice || crop.price || '' %>" required>
+      <div class="form-text">Bulk buyers will see this rate (usually a bit lower).</div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label" for="quantity">Available quantity (kg)</label>
+      <input class="form-control" type="number" min="1" id="quantity" name="quantity" value="<%= crop.quantity || '' %>"
+        required>
+      <div class="form-text" id="minHint"></div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label" for="minBulkQty">Bulk minimum (kg)</label>
+      <input class="form-control" type="number" min="1" id="minBulkQty" name="minBulkQty"
+        value="<%= crop.minBulkQty || 100 %>">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" for="harvestDate">Harvest date</label>
+      <input class="form-control" type="date" id="harvestDate" name="harvestDate"
+        value="<%= crop.harvestDate ? crop.harvestDate.toISOString().split('T')[0] : '' %>">
+    </div>
+
+    <!-- Location (real, verified) -->
+    <div class="col-12">
+      <label class="form-label" for="location">Location (Village / City / District)</label>
+      <div class="position-relative">
+        <div class="input-group">
+          <input class="form-control" id="location" name="location" value="<%= crop.location || '' %>"
+            placeholder="Type karo, phir list mein se apni jagah chuno" autocomplete="off" required>
+          <button type="button" class="btn btn-outline-success" id="gpsBtn">
+            <i class="fa-solid fa-location-crosshairs"></i> My current location
+          </button>
+        </div>
+        <div id="locSuggest" class="list-group position-absolute w-100 shadow d-none"
+          style="z-index: 1050; max-height: 260px; overflow-y: auto;"></div>
+      </div>
+
+      <input type="hidden" id="lat" name="lat" value="<%= crop.lat || '' %>">
+      <input type="hidden" id="lng" name="lng" value="<%= crop.lng || '' %>">
+
+      <div id="locStatus" class="form-text"></div>
+      <div id="locMap" class="rounded border mt-2 d-none" style="height: 240px;"></div>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" for="description">Description</label>
+      <textarea class="form-control" id="description" name="description" rows="3"
+        maxlength="500"><%= crop.description || '' %></textarea>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" for="image">Crops photo (JPG/PNG/WEBP, max 2MB)</label>
+      <input class="form-control" type="file" id="image" name="image" accept="image/*">
+      <% if (crop.image) { %>
+        <img src="<%= crop.image %>" alt="" class="mt-2 rounded" style="height: 80px;">
+        <small class="text-muted d-block">Change photo.</small>
+        <% } %>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-primary">
+      <%= button %>
+    </button>
+    <a href="/kisan/dashboard" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+  (function () {
+    const form = document.getElementById('cropForm');
+    const input = document.getElementById('location');
+    const latEl = document.getElementById('lat');
+    const lngEl = document.getElementById('lng');
+    const list = document.getElementById('locSuggest');
+    const status = document.getElementById('locStatus');
+    const gpsBtn = document.getElementById('gpsBtn');
+    const mapEl = document.getElementById('locMap');
+
+    const PHOTON = 'https://photon.komoot.io';
+    let map, marker, timer, seq = 0;
+
+    function setStatus(text, cls) {
+      status.className = 'form-text ' + (cls || '');
+      status.textContent = text;
+    }
+
+    function showMap(lat, lng) {
+      mapEl.classList.remove('d-none');
+      if (!map) {
+        map = L.map(mapEl).setView([lat, lng], 12);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        marker = L.marker([lat, lng]).addTo(map);
+      } else {
+        map.setView([lat, lng], 12);
+        marker.setLatLng([lat, lng]);
+      }
+      setTimeout(() => map.invalidateSize(), 50);
+    }
+
+    function setVerified(lat, lng) {
+      latEl.value = Number(lat).toFixed(6);
+      lngEl.value = Number(lng).toFixed(6);
+      setStatus('✓ Location verified', 'text-success');
+      showMap(Number(lat), Number(lng));
+    }
+
+    function clearVerified() {
+      latEl.value = '';
+      lngEl.value = '';
+      mapEl.classList.add('d-none');
+    }
+
+    function label(p) {
+      const parts = [p.name, p.district || p.county, p.city, p.state];
+      return [...new Set(parts.filter(Boolean))].join(', ');
+    }
+
+    function hideList() { list.classList.add('d-none'); list.textContent = ''; }
+
+    async function search(q, mySeq) {
+      try {
+        const res = await fetch(PHOTON + '/api/?limit=6&bbox=68,6,98,38&q=' + encodeURIComponent(q));
+        const data = await res.json();
+        if (mySeq !== seq) return;           // naya type ho chuka hai, purana result ignore
+        const items = (data.features || []).filter(
+          (f) => !f.properties.countrycode || f.properties.countrycode.toUpperCase() === 'IN'
+        );
+        list.textContent = '';
+        if (!items.length) {
+          setStatus('No location found; try entering something else.', 'text-danger');
+          hideList();
+          return;
+        }
+        items.forEach((f) => {
+          const [lng, lat] = f.geometry.coordinates;
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'list-group-item list-group-item-action small';
+          b.textContent = label(f.properties);
+          b.addEventListener('click', () => {
+            input.value = b.textContent;
+            setVerified(lat, lng);
+            hideList();
+          });
+          list.appendChild(b);
+        });
+        list.classList.remove('d-none');
+        setStatus('Select your location from the list', 'text-muted');
+      } catch (e) {
+        setStatus('Location search is not working at the moment. Please check your internet connection or use your current location.', 'text-danger');
+      }
+    }
+
+    input.addEventListener('input', () => {
+      clearVerified();                        // text badla to purani location verified nahi
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 3) { hideList(); setStatus(''); return; }
+      const mySeq = ++seq;
+      timer = setTimeout(() => search(q, mySeq), 400);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!list.contains(e.target) && e.target !== input) hideList();
+    });
+
+    gpsBtn.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        setStatus('Your browser does not support location services.', 'text-danger');
+        return;
+      }
+      setStatus('Searching for your location...', 'text-muted');
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const res = await fetch(PHOTON + '/reverse?lon=' + longitude + '&lat=' + latitude);
+          const data = await res.json();
+          const f = data.features && data.features[0];
+          input.value = f ? label(f.properties) : latitude.toFixed(4) + ', ' + longitude.toFixed(4);
+        } catch (e) {
+          input.value = latitude.toFixed(4) + ', ' + longitude.toFixed(4);
+        }
+        setVerified(latitude, longitude);
+        hideList();
+      }, () => {
+        setStatus('Location not found. Please allow location permission in your browser.', 'text-danger');
+      }, { enableHighAccuracy: true, timeout: 10000 });
+    });
+
+    // bina verified location ke form submit nahi hoga
+    form.addEventListener('submit', (e) => {
+      if (!latEl.value || !lngEl.value) {
+        e.preventDefault();
+        setStatus('Please select your location from the list (or use your current location)', 'text-danger');
+        input.focus();
+      }
+    });
+
+    // edit page: purani saved location ka map dikhao
+    if (latEl.value && lngEl.value) {
+      setStatus('✓ Location verified', 'text-success');
+      showMap(Number(latEl.value), Number(lngEl.value));
+    }
+  })();
+</script>
+
+<script>
+  (function () {
+    const MIN = <% - JSON.stringify(currentUser && currentUser.role === 'bulkbuyer' ? {} : CUSTOMER_MIN_QTY) %>;
+    const cat = document.getElementById('category');
+    const qty = document.getElementById('quantity');
+    const hint = document.getElementById('minHint');
+    if (!cat || !qty || !hint) return;
+
+    function update() {
+          const min = MIN[cat.value] || (Object.keys(MIN).length ? 50 : 1);
+    qty.min = min;
+    hint.textContent = Object.keys(MIN).length
+      ? 'Customers minimum order ' + min + ' is kg , Therefore, at the very least ' + min + ' kg stock add .'
+      : 'You can list crops in any quantity.';
+    }
+    cat.addEventListener('change', update);
+    update();
+  })();
+</script>

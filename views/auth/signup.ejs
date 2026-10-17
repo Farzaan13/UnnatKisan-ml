@@ -1,0 +1,47 @@
+<% layout('/layouts/boilerplate') %>
+<div class="container my-5" style="max-width: 520px;">
+  <div class="card p-4">
+
+    <form action="/signup" method="POST">
+      <div class="mb-3">
+        <label class="form-label">I am a</label>
+        <select name="role" id="role" class="form-select" required>
+          <option value="customer">Customer</option>
+          <option value="bulkbuyer">Bulk Buyer</option>
+          <option value="kisan">Kisan / FPO</option>
+        </select>
+      </div>
+
+      <input class="form-control mb-3" name="name" placeholder="Full Name" required>
+      <input class="form-control mb-3" type="email" name="email" placeholder="Email" required>
+      <input class="form-control mb-3" name="phone" placeholder="Mobile Number" required>
+
+      <div id="kisanFields" class="d-none">
+        <input class="form-control mb-3" name="village" placeholder="Village / District">
+        <input class="form-control mb-3" name="fpoName" placeholder="FPO name (optional)">
+      </div>
+
+      <div id="bulkFields" class="d-none">
+        <input class="form-control mb-3" name="businessName" placeholder="Business name">
+        <input class="form-control mb-3" name="gstNumber" placeholder="GST number">
+      </div>
+
+      <input class="form-control mb-3" type="password" name="password" placeholder="Password" required>
+      <input class="form-control mb-3" type="password" name="confirmPassword" placeholder="Confirm Password" required>
+
+      <button class="btn btn-primary w-100">Signup</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  const role = document.getElementById('role');
+  const kisan = document.getElementById('kisanFields');
+  const bulk = document.getElementById('bulkFields');
+  function toggle() {
+    kisan.classList.toggle('d-none', role.value !== 'kisan');
+    bulk.classList.toggle('d-none', role.value !== 'bulkbuyer');
+  }
+  role.addEventListener('change', toggle);
+  toggle();
+</script>

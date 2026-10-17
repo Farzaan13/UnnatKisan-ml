@@ -1,0 +1,251 @@
+<% layout('/layouts/boilerplate') %>
+
+    <% const minQty=crop.minQtyFor(buyerRole); %>
+        <% const unitPrice=crop.priceFor(buyerRole); %>
+
+            <a href="<%= base %>/dashboard" class="text-decoration-none">
+                <i class="fa-solid fa-arrow-left"></i> Back to crops
+            </a>
+
+            <div class="row g-4 mt-1">
+                <div class="col-md-6">
+                    <% if (crop.image) { %>
+                        <img src="<%= crop.image %>" alt="<%= crop.name %>" class="img-fluid rounded w-100"
+                            style="max-height: 380px; object-fit: cover;">
+                        <% } else { %>
+                            <div class="d-flex align-items-center justify-content-center rounded"
+                                style="height: 320px; background: var(--background-soft);">
+                                <i class="fa-solid fa-wheat-awn fa-5x text-success"></i>
+                            </div>
+                            <% } %>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card p-4">
+                        <div class="d-flex justify-content-between">
+                            <h3>
+                                <%= crop.name %>
+                            </h3>
+                            <span class="badge text-bg-success align-self-start">
+                                <%= crop.category %>
+                            </span>
+                        </div>
+                        <h4 class="text-success">₹<%= unitPrice %> <small class="text-muted fs-6">/ kg</small>
+                                <% if (buyerRole==='bulkbuyer' ) { %><span class="badge text-bg-dark fs-6">Bulk
+                                        price</span>
+                                    <% } %>
+                        </h4>
+
+                        <ul class="list-unstyled text-muted mb-3">
+                            <li>Available: <strong>
+                                    <%= crop.quantity %> kg
+                                </strong></li>
+                            <% if (buyerRole==='bulkbuyer' ) { %>
+                                <li>Bulk minimum: <strong>
+                                        <%= crop.minBulkQty %> kg
+                                    </strong></li>
+                                <% } %>
+                                    <% if (buyerRole !=='bulkbuyer' ) { %>
+                                        <li>Minimum order: <strong>
+                                                <%= minQty %> kg
+                                            </strong></li>
+                                        <% } %>
+                                            <% if (crop.harvestDate) { %>
+                                                <li>Harvest: <%= crop.harvestDate.toLocaleDateString('en-IN') %>
+                                                </li>
+                                                <% } %>
+                                                    <% if (crop.location) { %>
+                                                        <li>Location: <%= crop.location %>
+                                                        </li>
+                                                        <% } %>
+                                                            <% if (crop.kisan) { %>
+                                                                <li>
+                                                                    <%= crop.sellerRole==='bulkbuyer'
+                                                                        ? 'Seller (Bulk buyer)' : 'Kisan' %>: <%=
+                                                                            crop.kisan.name %>
+                                                                            <%= crop.kisan.businessName ? ' (' +
+                                                                                crop.kisan.businessName + ')' : '' %>
+                                                                                <%= crop.kisan.village ? ', ' +
+                                                                                    crop.kisan.village : '' %>
+                                                                </li>
+                                                                <% } %>
+                        </ul>
+
+                        <% if (crop.lat && crop.lng) { %>
+                            <link rel="stylesheet"
+                                href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+                            <div id="cropMap" class="rounded border mb-2" style="height: 200px;"></div>
+                            <a href="https://www.google.com/maps?q=<%= crop.lat %>,<%= crop.lng %>" target="_blank"
+                                rel="noopener" class="small text-decoration-none d-inline-block mb-3">
+                                <i class="fa-solid fa-location-dot"></i> See on Google Maps  
+                            </a>
+                            <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+                            <script>
+                                (function () {
+                                    const pos = [<%= crop.lat %>, <%= crop.lng %>];
+                                    const m = L.map('cropMap', { scrollWheelZoom: false }).setView(pos, 11);
+                                    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+                                    }).addTo(m);
+                                    L.marker(pos).addTo(m);
+                                })();
+                            </script>
+                            <% } %>
+
+                                <% if (crop.description) { %>
+                                    <p>
+                                        <%= crop.description %>
+                                    </p>
+                                    <% } %>
+
+                                        <% if (crop.quantity <=0 || crop.quantity < minQty) { %>
+                                            <div class="alert alert-warning mb-0">Is waqt itna stock available nahi hai.
+                                            </div>
+                                            <% } else { %>
+                                                <form action="<%= base %>/crops/<%= crop._id %>/order" method="POST" <%-
+                                                    buyerRole==='bulkbuyer' ? 'enctype="multipart/form-data"' : '' %>>
+                                                    <label class="form-label" for="quantity">Quantity (kg)</label>
+                                                    <input class="form-control mb-2" type="number" id="quantity"
+                                                        name="quantity" min="<%= minQty %>" max="<%= crop.quantity %>"
+                                                        value="<%= minQty %>" required>
+
+                                                    <label class="form-label" for="deliveryCity">Delivery city</label>
+                                                    <select class="form-select mb-2" id="deliveryCity"
+                                                        name="deliveryCity" required>
+                                                        <option value="" disabled selected>Select City</option>
+                                                        <% cities.forEach(c=> { %>
+                                                            <option value="<%= c %>">
+                                                                <%= c %>
+                                                            </option>
+                                                            <% }) %>
+                                                    </select>
+
+                                                    <div id="distInfo" class="small text-success mb-2"></div>
+
+                                                    <label class="form-label" for="deliveryAddress">Full 
+                                                        address</label>
+                                                    <textarea class="form-control mb-3" id="deliveryAddress"
+                                                        name="deliveryAddress" rows="2" minlength="10" maxlength="200"
+                                                        placeholder="Ghar/dukaan, gali, landmark, pincode"
+                                                        required></textarea>
+
+                                                    <% if (buyerRole==='bulkbuyer' ) { %>
+                                                        <label class="form-label">Payment method</label>
+                                                        <div class="mb-2">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio"
+                                                                    name="paymentMethod" id="payCod" value="cod"
+                                                                    checked>
+                                                                <label class="form-check-label" for="payCod">Cash on
+                                                                    Delivery</label>
+                                                            </div>
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio"
+                                                                    name="paymentMethod" id="payOnline" value="online">
+                                                                <label class="form-check-label" for="payOnline">Online
+                                                                    (UPI
+                                                                    / Bank
+                                                                    transfer)</label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div id="onlineBox" class="border rounded p-3 mb-3 d-none">
+                                                            <div class="small text-muted mb-2">
+                                                               Make a UPI/bank transfer to the farmer's number
+                                                                <% if (crop.kisan && crop.kisan.phone) { %>(<strong>
+                                                                        <%= crop.kisan.phone %>
+                                                                    </strong>)<% } %>,
+                                                                       Then enter the UTR / transaction ID below. The farmer will ship the order only after verification.
+                                                            </div>
+                                                            <label class="form-label" for="transactionId">UTR /
+                                                                Transaction
+                                                                ID</label>
+                                                            <input class="form-control mb-2" id="transactionId"
+                                                                name="transactionId" maxlength="30"
+                                                                placeholder="e.g. 412345678901">
+                                                            <label class="form-label" for="paymentProof">Payment
+                                                                screenshot
+                                                                (optional)</label>
+                                                            <input class="form-control" type="file" id="paymentProof"
+                                                                name="image" accept="image/jpeg,image/png,image/webp">
+                                                        </div>
+                                                        <% } else { %>
+                                                            <div class="alert alert-light border py-2 mb-3">
+                                                                <i class="fa-solid fa-money-bill-wave text-success"></i>
+                                                                <strong>Payment:</strong> Cash on Delivery 
+                                                            </div>
+                                                            <% } %>
+
+                                                                <p class="mb-3">Total: <strong id="total">₹<%= minQty *
+                                                                            unitPrice %></strong></p>
+                                                                <button class="btn btn-primary w-100">place order
+                                                                    </button>
+                                                                <button type="submit"
+                                                                    class="btn btn-outline-success w-100 mt-2"
+                                                                    formaction="<%= base %>/cart/add/<%= crop._id %>"
+                                                                    formenctype="application/x-www-form-urlencoded"
+                                                                    formnovalidate>
+                                                                    <i class="fa-solid fa-cart-plus"></i> Add to cart
+                                                                </button>
+                                                </form>
+
+
+                                                <script>
+                                                    (function () {
+                                                        const sel = document.getElementById('deliveryCity');
+                                                        const box = document.getElementById('distInfo');
+                                                        if (!sel || !box) return;
+
+                                                        const cityCoords = <% - JSON.stringify(cityCoords) %>;
+                                                        const from = <% - JSON.stringify(crop.lat && crop.lng ? { lat: crop.lat, lng: crop.lng } : null) %>;
+                                                        const fromName = <% - JSON.stringify(crop.location || 'kisan').replace(/</g, '\\u003c') %>;
+
+                                                        const ROAD_FACTOR = 1.3;
+                                                        const rad = (d) => d * Math.PI / 180;
+                                                        function km(a, b) {
+                                                            const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+                                                            const h = Math.sin(dLat / 2) ** 2 +
+                                                                Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+                                                            return Math.round(2 * 6371 * Math.asin(Math.sqrt(h)) * ROAD_FACTOR);
+                                                        }
+
+                                                        sel.addEventListener('change', () => {
+                                                            const to = cityCoords[sel.value];
+                                                            if (!from) {
+                                                                box.className = 'small text-muted mb-2';
+                                                                box.textContent = 'The exact location of this crop is not available, so the distance cannot be specified..';
+                                                                return;
+                                                            }
+                                                            if (!to) { box.textContent = ''; return; }
+                                                            box.className = 'small text-success mb-2';
+                                                            box.textContent = '🚚 ' + fromName + ' to ' + sel.value + ' approximately ' + km(from, to) + ' km';
+                                                        });
+                                                    })();
+                                                </script>
+
+                                                <% if (buyerRole==='bulkbuyer' ) { %>
+                                                    <script>
+                                                        const onlineBox = document.getElementById('onlineBox');
+                                                        const txnInput = document.getElementById('transactionId');
+                                                        document.querySelectorAll('input[name="paymentMethod"]').forEach((r) => {
+                                                            r.addEventListener('change', () => {
+                                                                const online = document.getElementById('payOnline').checked;
+                                                                onlineBox.classList.toggle('d-none', !online);
+                                                                txnInput.required = online;
+                                                            });
+                                                        });
+                                                    </script>
+                                                    <% } %>
+
+                                                        <script>
+                                                            const price = <%= unitPrice %>;
+                                                            const qty = document.getElementById('quantity');
+                                                            const total = document.getElementById('total');
+                                                            qty.addEventListener('input', () => {
+                                                                total.textContent = '₹' + ((Number(qty.value) || 0) * price).toFixed(2);
+                                                            });
+                                                        </script>
+                                                        <% } %>
+                    </div>
+                </div>
+            </div>

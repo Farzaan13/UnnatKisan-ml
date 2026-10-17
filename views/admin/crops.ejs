@@ -1,0 +1,97 @@
+<% layout('/layouts/boilerplate') %>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Verify crops</h3>
+  <a href="/admin/dashboard" class="btn btn-outline-success">Dashboard</a>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-pills mb-3">
+  <% ['pending', 'verified', 'rejected'].forEach(s => { %>
+    <li class="nav-item">
+      <a class="nav-link <%= status === s ? 'active' : '' %>" href="/admin/crops?status=<%= s %>">
+        <%= s.charAt(0).toUpperCase() + s.slice(1) %>
+      </a>
+    </li>
+  <% }) %>
+</ul>
+
+<% if (crops.length === 0) { %>
+  <div class="card p-5 text-center text-muted">No <%= status %> crops.</div>
+<% } else { %>
+  <div class="row g-4">
+    <% crops.forEach(c => { %>
+      <div class="col-md-6 col-lg-4">
+        <div class="card h-100">
+          <% if (c.image) { %>
+            <img src="<%= c.image %>" class="card-img-top" alt="<%= c.name %>"
+              style="height: 180px; object-fit: cover;">
+          <% } else { %>
+            <div class="d-flex align-items-center justify-content-center"
+              style="height: 180px; background: var(--background-soft);">
+              <i class="fa-solid fa-wheat-awn fa-3x text-success"></i>
+            </div>
+          <% } %>
+
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <h5 class="card-title"><%= c.name %></h5>
+              <%- include('../partials/verifyBadge', { verified: c.verified }) %>
+            </div>
+
+            <p class="mb-1 small">
+              <span class="badge text-bg-success"><%= c.category %></span>
+              <span class="badge text-bg-secondary"><%= c.sellerRole %></span>
+            </p>
+            <p class="mb-1">₹<%= c.price %> / kg <small class="text-muted">(customer)</small></p>
+            <p class="mb-1">₹<%= c.bulkPrice || c.price %> / kg
+              <small class="text-muted">(bulk, min <%= c.minBulkQty %> kg)</small></p>
+            <p class="mb-1 small text-muted">Stock: <%= c.quantity %> kg</p>
+            <% if (c.harvestDate) { %>
+              <p class="mb-1 small text-muted">Harvest: <%= c.harvestDate.toLocaleDateString('en-IN') %></p>
+            <% } %>
+            <% if (c.location) { %>
+              <p class="mb-1 small text-muted"><i class="fa-solid fa-location-dot"></i> <%= c.location %></p>
+            <% } %>
+            <% if (c.description) { %>
+              <p class="mb-2 small"><%= c.description %></p>
+            <% } %>
+
+            <hr class="my-2">
+            <p class="mb-0 small">
+              <i class="fa-solid fa-user"></i>
+              <%= c.kisan ? c.kisan.name : 'Deleted user' %>
+              <% if (c.kisan) { %>
+                <br><i class="fa-solid fa-phone"></i> <%= c.kisan.phone %>
+                <% if (c.kisan.village) { %><br>Village: <%= c.kisan.village %><% } %>
+                <% if (c.kisan.fpoName) { %><br>FPO: <%= c.kisan.fpoName %><% } %>
+                <% if (c.kisan.businessName) { %><br><%= c.kisan.businessName %><% } %>
+              <% } %>
+            </p>
+
+            <% if (c.verified === 'rejected' && c.verifyNote) { %>
+              <p class="mt-2 mb-0 small text-danger">Reason: <%= c.verifyNote %></p>
+            <% } %>
+          </div>
+
+          <div class="card-footer bg-white border-0 pb-3">
+            <% if (c.verified !== 'verified') { %>
+              <form action="/admin/crops/<%= c._id %>/verify?_method=PATCH" method="POST" class="d-inline">
+                <button class="btn btn-sm btn-success"><i class="fa-solid fa-check"></i> Verify</button>
+              </form>
+            <% } %>
+
+            <% if (c.verified !== 'rejected') { %>
+              <form action="/admin/crops/<%= c._id %>/reject?_method=PATCH" method="POST"
+                class="d-flex gap-1 mt-2">
+                <input type="text" name="note" class="form-control form-control-sm"
+                  placeholder="Reject reason" maxlength="200" required>
+                <button class="btn btn-sm btn-outline-danger">Reject</button>
+              </form>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>

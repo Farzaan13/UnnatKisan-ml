@@ -1,0 +1,232 @@
+<% layout('layouts/boilerplate') %>
+
+<%
+  const viewRole = currentUser ? currentUser.role : 'customer';
+  const dashboardUrl = currentUser
+    ? ({ kisan: '/kisan/dashboard', customer: '/customer/dashboard', bulkbuyer: '/buyer/dashboard' })[currentUser.role]
+    : null;
+
+  // category / sort badalne par search (q) bani rahe
+  const link = (c) => {
+    const p = new URLSearchParams();
+    if (c) p.set('cat', c);
+    if (q) p.set('q', q);
+    if (sort !== 'new') p.set('sort', sort);
+    const s = p.toString();
+    return '/' + (s ? '?' + s : '');
+  };
+%>
+
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  .mandi { --font-display: 'Baloo 2', 'Poppins', sans-serif; }
+
+  /* category rangon ka system: har category ka apna ink (gehra) aur tint (halka) */
+  .mandi .cat-all       { --ink: #1b5e20; --tint: #ffffff; }
+  .mandi .cat-vegetable { --ink: #1f6b2a; --tint: #e3f2df; }
+  .mandi .cat-fruit     { --ink: #b4500f; --tint: #fde6d3; }
+  .mandi .cat-grain     { --ink: #85650a; --tint: #f7ecc6; }
+  .mandi .cat-pulse     { --ink: #8c3b1c; --tint: #f2dccf; }
+  .mandi .cat-other     { --ink: #3d4a66; --tint: #e2e7f0; }
+
+  .mandi :is(a, button, select, input):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* hero */
+  .mandi .hero { background: var(--primary-dark); color: #fff; border-radius: var(--radius-lg); padding: 2rem 1.5rem; margin-bottom: 1.5rem; }
+  .mandi .hero-title { font-family: var(--font-display); font-weight: 700; font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.05; margin: 0 0 .6rem; }
+  .mandi .hero-sub { color: rgba(255,255,255,.82); max-width: 46ch; margin-bottom: 1.25rem; }
+  .mandi .hero-search { display: flex; align-items: center; gap: .5rem; background: #fff; border-radius: 999px; padding: .35rem .35rem .35rem 1.1rem; max-width: 560px; }
+  .mandi .hero-search i { color: var(--text-light); }
+  .mandi .hero-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: .55rem .25rem; color: var(--text-dark); }
+  .mandi .hero-search button { border: 0; border-radius: 999px; background: var(--accent); color: var(--text-dark); font-weight: 600; padding: .6rem 1.3rem; }
+  .mandi .hero-search:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .mandi .hero-note { margin-top: 1rem; font-size: .9rem; color: rgba(255,255,255,.8); }
+  .mandi .hero-note a { color: #ffd54f; }
+
+  /* taaza listing board */
+  .mandi .board { background: #0f3a1f; border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius-md); padding: 1rem 1.15rem; height: 100%; }
+  .mandi .board h2 { font-family: var(--font-display); font-size: 1.15rem; margin: 0 0 .5rem; }
+  .mandi .board ul { list-style: none; margin: 0; padding: 0; }
+  .mandi .board li { display: flex; align-items: baseline; gap: .5rem; padding: .3rem 0; }
+  .mandi .board .dots { flex: 1; border-bottom: 2px dotted rgba(255,255,255,.3); transform: translateY(-3px); }
+  .mandi .board .price { font-weight: 600; color: #ffd54f; white-space: nowrap; }
+
+  /* category rail */
+  .mandi .cat-rail { display: flex; gap: .75rem; overflow-x: auto; padding: .25rem .25rem .75rem; scrollbar-width: thin; }
+  .mandi .cat-tile { flex: 0 0 auto; min-width: 104px; display: flex; flex-direction: column; align-items: center; padding: .65rem .9rem; border-radius: var(--radius-md); background: var(--tint); border: 2px solid transparent; color: var(--ink); text-decoration: none; transition: border-color .2s, background-color .2s, color .2s; }
+  .mandi .cat-tile:hover { border-color: var(--ink); color: var(--ink); }
+  .mandi .cat-tile.is-active { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .mandi .cat-emoji { font-size: 2rem; line-height: 1.15; }
+  .mandi .cat-name { font-weight: 600; font-size: .9rem; }
+  .mandi .cat-count { font-size: .75rem; opacity: .8; }
+
+  /* toolbar */
+  .mandi .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin: .5rem 0 1.25rem; }
+  .mandi .result-line { color: var(--text-light); }
+  .mandi .sort-form select { min-width: 170px; }
+
+  /* category heading */
+  .mandi .cat-head { display: flex; align-items: center; gap: .9rem; margin: 0 0 1.5rem; padding: .9rem 1.1rem; border-radius: var(--radius-md); background: var(--tint); color: var(--ink); }
+  .mandi .cat-head-emoji { font-size: 2.4rem; line-height: 1; }
+  .mandi .cat-head h2 { font-family: var(--font-display); font-size: 1.6rem; margin: 0; line-height: 1.1; }
+  .mandi .cat-head h2 small { font-family: 'Poppins', sans-serif; font-size: .9rem; font-weight: 400; opacity: .8; }
+  .mandi .cat-head p { margin: 0; font-size: .9rem; }
+  .mandi .cat-head .cat-link { margin-left: auto; color: var(--ink); font-weight: 500; font-size: .9rem; }
+  .mandi .cat-section { margin-bottom: 2.5rem; scroll-margin-top: 80px; }
+
+  /* crop card */
+  .mandi .crop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1.75rem 1.25rem; }
+  .mandi .crop { display: flex; flex-direction: column; height: 100%; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); transition: border-color .2s, transform .2s; }
+  .mandi .crop:hover { border-color: var(--ink); transform: translateY(-2px); }
+  .mandi .crop-media { position: relative; height: 150px; background: var(--tint); border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0; display: flex; align-items: center; justify-content: center; }
+  .mandi .crop-media img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+  .mandi .crop-emoji { font-size: 4.2rem; line-height: 1; }
+  .mandi .rate-tag { position: absolute; left: 12px; bottom: -15px; z-index: 2; display: inline-flex; align-items: baseline; gap: 2px; background: #fff; border: 2px solid var(--ink); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; line-height: 1; padding: .3rem .7rem .3rem 1.15rem; border-radius: 8px 999px 999px 8px; }
+  .mandi .rate-tag::before { content: ''; position: absolute; left: .45rem; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; border: 2px solid var(--ink); background: var(--tint); }
+  .mandi .rate-tag small { font-family: 'Poppins', sans-serif; font-size: .7rem; font-weight: 500; }
+  .mandi .seller-chip { position: absolute; top: 10px; right: 10px; background: #1f2937; color: #fff; font-size: .72rem; padding: .15rem .55rem; border-radius: 999px; }
+  .mandi .crop-body { padding: 1.5rem 1rem .5rem; flex: 1; }
+  .mandi .crop-name { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; margin: 0 0 .35rem; line-height: 1.15; }
+  .mandi .crop-facts { list-style: none; margin: 0; padding: 0; font-size: .85rem; color: var(--text-light); }
+  .mandi .crop-facts li { padding: .1rem 0; }
+  .mandi .crop-facts i { color: var(--ink); }
+  .mandi .crop-cta { padding: .5rem 1rem 1rem; }
+
+  @media (prefers-reduced-motion: reduce) { .mandi * { transition: none !important; } }
+</style>
+
+<div class="mandi">
+
+  <!-- Hero: search aur taaza listing board -->
+  <section class="hero">
+    <div class="row g-4 align-items-center">
+      <div class="col-lg-7">
+        <h1 class="hero-title">Fresh produce, straight from the farmer</h1>
+        <p class="hero-sub"></p>No middlemen. The full price for the farmer, the right price for you.</p>
+
+        <form action="/" method="GET" class="hero-search" role="search">
+          <% if (sort !== 'new') { %><input type="hidden" name="sort" value="<%= sort %>"><% } %>
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" name="q" value="<%= q %>" maxlength="50"
+                 placeholder="Write Crop Name: tomato, pumpkin, mango" aria-label="Crop ka naam dhundo">
+          <button type="submit">Search</button>
+        </form>
+
+        <p class="hero-note">
+          <% if (!currentUser) { %>
+            You don’t need to log in to view the saree crops; however, you do need to log in to place an order.
+            <a href="/login">login</a> Or <a href="/signup">signup</a> with.
+          <% } else { %>
+            <a href="<%= dashboardUrl %>"><i class="fa-solid fa-gauge"></i> My dashboard</a>
+          <% } %>
+        </p>
+      </div>
+
+      <% if (board.length) { %>
+        <div class="col-lg-5 d-none d-lg-block">
+          <aside class="board" aria-label="Fresh listing">
+            <h2>Fresh listing</h2>
+            <ul>
+              <% board.forEach(c => { %>
+                <li>
+                  <span><%= cropEmoji(c.name, c.category) %> <%= c.name %></span>
+                  <span class="dots" aria-hidden="true"></span>
+                  <span class="price">₹<%= c.priceFor(viewRole) %> / kg</span>
+                </li>
+              <% }) %>
+            </ul>
+          </aside>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <!-- Category rail -->
+  <nav class="cat-rail" aria-label="Category chuno">
+    <a class="cat-tile cat-all <%= !cat ? 'is-active' : '' %>" href="<%= link('') %>" <%- !cat ? 'aria-current="page"' : '' %>>
+      <span class="cat-emoji" aria-hidden="true">🛒</span>
+      <span class="cat-name">All Categories</span>
+      <span class="cat-count"><%= allCount %> crops</span>
+    </a>
+    <% CATEGORY_ORDER.forEach(k => { const m = CATEGORY_META[k]; %>
+      <a class="cat-tile cat-<%= k %> <%= cat === k ? 'is-active' : '' %>" href="<%= link(k) %>" <%- cat === k ? 'aria-current="page"' : '' %>>
+        <span class="cat-emoji" aria-hidden="true"><%= m.emoji %></span>
+        <span class="cat-name"><%= m.name %></span>
+        <span class="cat-count"><%= counts[k] %> crops</span>
+      </a>
+    <% }) %>
+  </nav>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="result-line">
+      <% if (q) { %>
+        "<strong><%= q %></strong>" For <strong><%= total %></strong> crops found
+        <a href="/" class="ms-2 small text-decoration-none"><i class="fa-solid fa-xmark"></i> Search hatao</a>
+      <% } else { %>
+        <strong><%= total %></strong> crops
+      <% } %>
+    </div>
+    <form action="/" method="GET" class="sort-form">
+      <% if (cat) { %><input type="hidden" name="cat" value="<%= cat %>"><% } %>
+      <% if (q) { %><input type="hidden" name="q" value="<%= q %>"><% } %>
+      <label for="sort" class="visually-hidden">How to plant crops</label>
+      <select id="sort" name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="new" <%= sort === 'new' ? 'selected' : '' %>>Newest First</option>
+        <option value="low" <%= sort === 'low' ? 'selected' : '' %>>Price: Low to High</option>
+        <option value="high" <%= sort === 'high' ? 'selected' : '' %>>Price: High to Low</option>
+      </select>
+    </form>
+  </div>
+
+  <!-- Results -->
+  <% if (total === 0) { %>
+    <div class="card p-5 text-center text-muted">
+      <div style="font-size: 3rem;" aria-hidden="true">🔍</div>
+      <% if (q || cat) { %>
+        <p class="mb-3">No crop found. Try a different name or category.</p>
+        <div><a href="/" class="btn btn-outline-secondary btn-sm">View All Crops</a></div>
+      <% } else { %>
+        <p class="mb-0">No crops available at the moment.</p>
+      <% } %>
+    </div>
+
+  <% } else if (cat) { %>
+    <!-- Sirf chuni hui category -->
+    <% const m = CATEGORY_META[cat]; %>
+    <header class="cat-head cat-<%= cat %>">
+      <span class="cat-head-emoji" aria-hidden="true"><%= m.emoji %></span>
+      <div>
+        <h2><%= m.name %> <small>(<%= m.en %>)</small></h2>
+        <p><%= total %> crops available</p>
+      </div>
+      <a class="cat-link" href="<%= link('') %>">View All Categories</a>
+    </header>
+    <div class="crop-grid">
+      <% crops.forEach(crop => { %>
+        <%- include('partials/cropCard', { crop, currentUser, viewRole, cropEmoji }) %>
+      <% }) %>
+    </div>
+
+  <% } else { %>
+    <!-- Sab: category-wise sections -->
+    <% sections.forEach(s => { %>
+      <section id="cat-<%= s.key %>" class="cat-section">
+        <header class="cat-head cat-<%= s.key %>">
+          <span class="cat-head-emoji" aria-hidden="true"><%= s.emoji %></span>
+          <div>
+            <h2><%= s.name %> <small>(<%= s.en %>)</small></h2>
+            <p><%= s.crops.length %> crops</p>
+          </div>
+          <a class="cat-link" href="<%= link(s.key) %>">View All</a>
+        </header>
+        <div class="crop-grid">
+          <% s.crops.forEach(crop => { %>
+            <%- include('partials/cropCard', { crop, currentUser, viewRole, cropEmoji }) %>
+          <% }) %>
+        </div>
+      </section>
+    <% }) %>
+  <% } %>
+
+</div>

@@ -1,0 +1,125 @@
+<% layout('/layouts/boilerplate') %>
+
+  <% const hasFilter=filters.q || filters.category || filters.maxPrice || filters.sort !=='new' ; %>
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Fresh Crops, Direct from Farmers </h3>
+      <div class="d-flex gap-2">
+        <a href="<%= base %>/cart" class="btn btn-outline-primary">
+          <i class="fa-solid fa-cart-shopping"></i> Cart
+          <% if (cartCount) { %><span class="badge text-bg-warning">
+              <%= cartCount %>
+            </span>
+            <% } %>
+        </a>
+        <a href="<%= base %>/orders" class="btn btn-outline-success">
+          <i class="fa-solid fa-box"></i> My Orders
+        </a>
+      </div>
+    </div>
+
+    <!-- Search / Filters -->
+    <form method="GET" action="<%= base %>/dashboard" class="card p-3 mb-3">
+      <div class="row g-2">
+        <div class="col-lg-5">
+          <div class="input-group">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input class="form-control" type="search" name="q" value="<%= filters.q %>"
+              placeholder="Search for a crop, location, or farmer/village...">
+          </div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <select class="form-select" name="category" onchange="this.form.submit()">
+            <option value="">All categories</option>
+            <% categories.forEach(c=> { %>
+              <option value="<%= c %>" <%=filters.category===c ? 'selected' : '' %>><%= c %>
+              </option>
+              <% }) %>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <input class="form-control" type="number" min="1" name="maxPrice" value="<%= filters.maxPrice %>"
+            placeholder="Max ₹/kg">
+        </div>
+        <div class="col-6 col-lg-2">
+          <select class="form-select" name="sort" onchange="this.form.submit()">
+            <option value="new" <%=filters.sort==='new' ? 'selected' : '' %>>New First</option>
+            <option value="low" <%=filters.sort==='low' ? 'selected' : '' %>>Price: Low to High</option>
+            <option value="high" <%=filters.sort==='high' ? 'selected' : '' %>>Price: High to Low</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-1 d-flex gap-2">
+          <button type="submit" class="btn btn-primary flex-grow-1" title="Search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </div>
+      </div>
+
+      <% if (hasFilter) { %>
+        <div class="mt-2 d-flex justify-content-between align-items-center">
+          <span class="small text-muted">
+            <%= crops.length %> crop found
+          </span>
+          <a href="<%= base %>/dashboard" class="small text-decoration-none">
+            <i class="fa-solid fa-xmark"></i> Remove filters
+          </a>
+        </div>
+        <% } %>
+    </form>
+
+    <!-- Results -->
+    <% if (crops.length===0) { %>
+      <div class="card p-5 text-center text-muted">
+        No crops found. Try changing the filters.
+        <% if (hasFilter) { %>
+          <div class="mt-3">
+            <a href="<%= base %>/dashboard" class="btn btn-outline-secondary btn-sm">Remove Filters</a>
+          </div>
+          <% } %>
+      </div>
+      <% } else { %>
+        <div class="row g-4">
+          <% crops.forEach(crop=> { %>
+            <div class="col-sm-6 col-lg-4">
+              <div class="card h-100">
+                <% if (crop.image) { %>
+                  <img src="<%= crop.image %>" alt="<%= crop.name %>"
+                    style="height: 180px; object-fit: cover; border-radius: var(--radius-md) var(--radius-md) 0 0;">
+                  <% } else { %>
+                    <div class="d-flex align-items-center justify-content-center"
+                      style="height: 180px; background: var(--background-soft);">
+                      <i class="fa-solid fa-wheat-awn fa-3x text-success"></i>
+                    </div>
+                    <% } %>
+                      <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                          <h5 class="card-title">
+                            <%= crop.name %>
+                          </h5>
+                          <span class="badge text-bg-success">
+                            <%= crop.category %>
+                          </span>
+                          <% if (crop.sellerRole==='bulkbuyer' ) { %><span class="badge text-bg-dark">Bulk buyer</span>
+                            <% } %>
+                            <% if (crop.sellerRole==='kisan' ) { %><span class="badge text-bg-dark">Farmer</span>
+                            <% } %>
+                        </div>
+                        <p class="mb-1"><strong>₹<%= crop.price %></strong> / kg</p>
+                        <p class="mb-1 text-muted small">Available: <%= crop.quantity %> kg</p>
+                        <p class="mb-1 text-muted small">Min order: <%= crop.minQtyFor('customer') %> kg</p>
+                        <% if (crop.location) { %>
+                          <p class="mb-0 text-muted small"><i class="fa-solid fa-location-dot"></i>
+                            <%= crop.location %>
+                          </p>
+                          <% } %>
+                      </div>
+                      <div class="card-footer bg-white border-0 pb-3">
+                        <a href="<%= base %>/crops/<%= crop._id %>" class="btn btn-primary w-100">See & order
+                          </a>
+                      </div>
+              </div>
+            </div>
+            <% }) %>
+        </div>
+        <% } %>

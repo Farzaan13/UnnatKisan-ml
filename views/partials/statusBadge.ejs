@@ -1,0 +1,2 @@
+<% const colors = { pending: 'warning', accepted: 'info', shipped: 'primary', delivered: 'success', rejected: 'danger' }; %>
+<span class="badge text-bg-<%= colors[status] || 'secondary' %>"><%= status %></span>
