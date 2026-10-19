@@ -11,11 +11,32 @@ const { CITY_NAMES } = require('../utils/cities');
 const { planRoute } = require('../utils/geo');
 const { buildSeries, forecast, WEEK_MS, WEEKS } = require('../utils/forecast');
 
+const { chatCrop } = require('../utils/cropChat');
 const router = express.Router();
 
 // is router ke saare routes sirf logged-in kisan ke liye
 router.use(isLoggedIn, allowRoles('kisan', 'bulkbuyer'));
 
+// ===== Chatbot (crop listing helper) =====
+const chatHits = new Map();   // user ke hisaab se rate limit (API ka kharcha bachane ke liye)
+
+router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
+  const uid = req.session.user.id;
+  const now = Date.now();
+  const hits = (chatHits.get(uid) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (hits.length >= 20) {
+    return res.status(429).json({ reply: 'Thodi der baad dobara try karo.', draft: null });
+  }
+  hits.push(now);
+  chatHits.set(uid, hits);
+
+  try {
+      res.json(await chatCrop(req.body.messages, req.body.voice === true, req.body.lang));
+  } catch (e) {
+    console.error('chatbot:', e.message);
+    res.status(500).json({ reply: 'Abhi chatbot kaam nahi kar raha. Form se crop add kar lo.', draft: null });
+  }
+});
 const removeImage = (url) => {removeByUrl(url);
 };
 

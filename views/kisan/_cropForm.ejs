@@ -56,7 +56,7 @@
       <div class="position-relative">
         <div class="input-group">
           <input class="form-control" id="location" name="location" value="<%= crop.location || '' %>"
-            placeholder="Type karo, phir list mein se apni jagah chuno" autocomplete="off" required>
+            placeholder="SELECT YOUR ADDRESS" autocomplete="off" required>
           <button type="button" class="btn btn-outline-success" id="gpsBtn">
             <i class="fa-solid fa-location-crosshairs"></i> My current location
           </button>
@@ -255,5 +255,44 @@
     }
     cat.addEventListener('change', update);
     update();
+  })();
+</script>
+
+<script>
+  // chatbot ka draft ho to "nayi crop" form bharo
+  (function () {
+    const form = document.getElementById('cropForm');
+    if (!form || form.getAttribute('action') !== '/kisan/crops') return;   // edit form par nahi
+
+    let d = null;
+    try { d = JSON.parse(sessionStorage.getItem('cropDraft') || 'null'); } catch (e) { }
+    if (!d) return;
+    sessionStorage.removeItem('cropDraft');
+
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el && v !== undefined && v !== null && v !== '') el.value = v;
+    };
+    set('name', d.name);
+    set('category', d.category);
+    set('price', d.price);
+    set('bulkPrice', d.bulkPrice || d.price);
+    set('quantity', d.quantity);
+    set('minBulkQty', d.minBulkQty);
+    set('harvestDate', d.harvestDate);
+    set('description', d.description);
+    document.getElementById('category').dispatchEvent(new Event('change'));
+
+    // location: text daalo, existing suggestion list khul jaayegi, kisan apni jagah chunega
+    if (d.location) {
+      const loc = document.getElementById('location');
+      loc.value = d.location;
+      loc.dispatchEvent(new Event('input'));
+    }
+
+    const note = document.createElement('div');
+    note.className = 'alert alert-success';
+    note.textContent = "chatbot has filled your form. Choose location , add photo , check everything and submit.";
+    form.prepend(note);
   })();
 </script>

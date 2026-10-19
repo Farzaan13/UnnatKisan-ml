@@ -9,7 +9,7 @@ const cropSchema = new mongoose.Schema({
   sellerRole: { type: String, enum: ['kisan', 'bulkbuyer'], default: 'kisan' },  // kisne list ki
   quantity: { type: Number, required: true, min: 0 },       // kg available
   minBulkQty: { type: Number, default: 100 },               // bulkbuyer ke liye minimum
-  harvestDate: Date,
+  harvestDate:{type: Date, required: true},
   location: String,
   lat: { type: Number, min: -90, max: 90 },
   lng: { type: Number, min: -180, max: 180 },

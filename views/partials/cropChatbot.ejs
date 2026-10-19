@@ -1,0 +1,306 @@
+<style>
+  #ccBtn { position: fixed; right: 18px; bottom: 18px; z-index: 1040; border-radius: 50px; }
+  #ccPanel { position: fixed; right: 18px; bottom: 74px; z-index: 1040; width: 340px; max-width: calc(100vw - 36px);
+    display: none; flex-direction: column; background: #fff; border: 1px solid #dee2e6; border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.18); overflow: hidden; }
+  #ccPanel.open { display: flex; }
+  #ccBox { height: 340px; overflow-y: auto; padding: 12px; background: #f8f9fa; }
+  .cc-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 14px;
+    white-space: pre-wrap; word-wrap: break-word; }
+  .cc-msg.bot { background: #fff; border: 1px solid #e3e6e8; }
+  .cc-msg.me { background: #198754; color: #fff; margin-left: auto; }
+  .cc-draft { background: #e8f5e9; border: 1px solid #b7dfb9; border-radius: 12px; padding: 10px 12px;
+    margin-bottom: 8px; font-size: 13px; }
+  #ccMic.rec { background: #dc3545; border-color: #dc3545; color: #fff; animation: ccPulse 1s infinite; }
+  @keyframes ccPulse { 0% { box-shadow: 0 0 0 0 rgba(220,53,69,.6); } 100% { box-shadow: 0 0 0 12px rgba(220,53,69,0); } }
+</style>
+
+<button id="ccBtn" class="btn btn-success shadow" type="button">
+  <i class="fa-solid fa-robot"></i> Kisan Mitra
+</button>
+
+<div id="ccPanel">
+  <div class="bg-success text-white px-3 py-2 d-flex justify-content-between align-items-center gap-2">
+    <strong>🌾 Kisan Sahayak</strong>
+    <div class="d-flex align-items-center gap-2">
+      <select id="ccLang" class="form-select form-select-sm py-0" style="width: auto;" aria-label="Language"></select>
+      <button type="button" class="btn btn-sm btn-light py-0" id="ccSpeak" title="Awaaz on/off">🔊</button>
+      <button type="button" class="btn-close btn-close-white" id="ccClose" aria-label="Close"></button>
+    </div>
+  </div>
+  <div id="ccBox"></div>
+  <form id="ccForm" class="d-flex gap-2 p-2 border-top">
+    <button type="button" class="btn btn-outline-success btn-sm" id="ccMic" title="🎤">🎤</button>
+    <input id="ccInput" class="form-control form-control-sm" maxlength="300" autocomplete="off" placeholder="✍️ / 🎤">
+    <button class="btn btn-success btn-sm" id="ccSend">➤</button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const btn = document.getElementById('ccBtn');
+    const panel = document.getElementById('ccPanel');
+    const box = document.getElementById('ccBox');
+    const form = document.getElementById('ccForm');
+    const input = document.getElementById('ccInput');
+    const send = document.getElementById('ccSend');
+    const mic = document.getElementById('ccMic');
+    const speakBtn = document.getElementById('ccSpeak');
+    const langSel = document.getElementById('ccLang');
+
+    // ---------- bhashayein ----------
+    const LANGS = [
+      ['hi-IN', 'हिन्दी'], ['en-IN', 'English'], ['mr-IN', 'मराठी'], ['bn-IN', 'বাংলা'],
+      ['gu-IN', 'ગુજરાતી'], ['pa-guru-IN', 'ਪੰਜਾਬੀ'], ['ta-IN', 'தமிழ்'],
+      ['te-IN', 'తెలుగు'], ['kn-IN', 'ಕನ್ನಡ'], ['ml-IN', 'മലയാളം']
+    ];
+    const STR = {
+      'hi-IN': { hello: 'नमस्ते! 🌾 लिखिए या 🎤 दबाकर बोलिए: फसल का नाम, कितने किलो, भाव। मैं लिस्टिंग का ड्राफ्ट बना दूँगा।', form: 'फॉर्म में भरें' },
+      'en-IN': { hello: "Hello! 🌾 Type or tap 🎤 and speak: crop name, quantity in kg, price. I'll prepare the listing draft.", form: 'Fill the form' },
+      'mr-IN': { hello: 'नमस्कार! 🌾 लिहा किंवा 🎤 दाबून बोला: पिकाचे नाव, किती किलो, भाव. मी लिस्टिंगचा मसुदा तयार करतो.', form: 'फॉर्ममध्ये भरा' },
+      'bn-IN': { hello: 'নমস্কার! 🌾 লিখুন বা 🎤 চেপে বলুন: ফসলের নাম, কত কেজি, দাম। আমি লিস্টিংয়ের খসড়া বানিয়ে দেব।', form: 'ফর্মে ভরুন' },
+      'gu-IN': { hello: 'નમસ્તે! 🌾 લખો અથવા 🎤 દબાવીને બોલો: પાકનું નામ, કેટલા કિલો, ભાવ. હું લિસ્ટિંગનો ડ્રાફ્ટ બનાવી દઈશ.', form: 'ફોર્મમાં ભરો' },
+      'pa-guru-IN': { hello: 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ! 🌾 ਲਿਖੋ ਜਾਂ 🎤 ਦਬਾ ਕੇ ਬੋਲੋ: ਫ਼ਸਲ ਦਾ ਨਾਮ, ਕਿੰਨੇ ਕਿਲੋ, ਭਾਅ। ਮੈਂ ਲਿਸਟਿੰਗ ਦਾ ਡਰਾਫਟ ਬਣਾ ਦਿਆਂਗਾ।', form: 'ਫਾਰਮ ਵਿੱਚ ਭਰੋ' },
+      'ta-IN': { hello: 'வணக்கம்! 🌾 எழுதுங்கள் அல்லது 🎤 அழுத்திப் பேசுங்கள்: பயிரின் பெயர், எத்தனை கிலோ, விலை. நான் பட்டியலின் வரைவை உருவாக்குகிறேன்.', form: 'படிவத்தில் நிரப்பு' },
+      'te-IN': { hello: 'నమస్కారం! 🌾 రాయండి లేదా 🎤 నొక్కి మాట్లాడండి: పంట పేరు, ఎన్ని కిలోలు, ధర. నేను లిస్టింగ్ డ్రాఫ్ట్ తయారు చేస్తాను.', form: 'ఫారమ్‌లో నింపండి' },
+      'kn-IN': { hello: 'ನಮಸ್ಕಾರ! 🌾 ಬರೆಯಿರಿ ಅಥವಾ 🎤 ಒತ್ತಿ ಮಾತನಾಡಿ: ಬೆಳೆಯ ಹೆಸರು, ಎಷ್ಟು ಕಿಲೋ, ಬೆಲೆ. ನಾನು ಲಿಸ್ಟಿಂಗ್ ಡ್ರಾಫ್ಟ್ ಮಾಡುತ್ತೇನೆ.', form: 'ಫಾರ್ಮ್‌ನಲ್ಲಿ ತುಂಬಿ' },
+      'ml-IN': { hello: 'നമസ്കാരം! 🌾 എഴുതുക അല്ലെങ്കിൽ 🎤 അമർത്തി സംസാരിക്കുക: വിളയുടെ പേര്, എത്ര കിലോ, വില. ഞാൻ ലിസ്റ്റിങ് ഡ്രാഫ്റ്റ് തയ്യാറാക്കാം.', form: 'ഫോമിൽ പൂരിപ്പിക്കുക' }
+    };
+
+    let lang = 'hi-IN';
+    try { const s = localStorage.getItem('ccLang'); if (s && STR[s]) lang = s; } catch (e) { }
+
+    LANGS.forEach(([code, label]) => {
+      const o = document.createElement('option');
+      o.value = code;
+      o.textContent = label;
+      langSel.appendChild(o);
+    });
+    langSel.value = lang;
+
+    const ttsLang = () => lang.replace('-guru', '');   // pa-guru-IN -> pa-IN (bolne ke liye)
+
+    // ---------- state ----------
+    const history = [];                       // {role, content}, server ko bheji jaati hai
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const synth = window.speechSynthesis;
+    let rec = null;
+    let voiceMode = false;                    // mic wala hands-free mode
+    let speakOn = true;                       // jawab bolkar sunana
+    let silentTries = 0;
+    let warnedNoVoice = false;
+
+    // ---------- chat UI ----------
+    function add(text, who) {
+      const d = document.createElement('div');
+      d.className = 'cc-msg ' + who;
+      d.textContent = text;                   // textContent: koi HTML nahi chalega
+      box.appendChild(d);
+      box.scrollTop = box.scrollHeight;
+      return d;
+    }
+
+    function showDraft(draft) {
+      const rows = [
+        ['Crop', draft.name], ['Category', draft.category],
+        ['Customer rate', draft.price ? '₹' + draft.price + '/kg' : ''],
+        ['Bulk rate', draft.bulkPrice ? '₹' + draft.bulkPrice + '/kg' : ''],
+        ['Quantity', draft.quantity ? draft.quantity + ' kg' : ''],
+        ['Bulk minimum', draft.minBulkQty ? draft.minBulkQty + ' kg' : ''],
+        ['Harvest', draft.harvestDate], ['Location', draft.location]
+      ].filter((r) => r[1]);
+
+      const card = document.createElement('div');
+      card.className = 'cc-draft';
+      const title = document.createElement('strong');
+      title.textContent = '📝 Draft';
+      card.appendChild(title);
+      rows.forEach(([k, v]) => {
+        const line = document.createElement('div');
+        line.textContent = k + ': ' + v;
+        card.appendChild(line);
+      });
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'btn btn-success btn-sm mt-2';
+      go.textContent = STR[lang].form;
+      go.addEventListener('click', () => {
+        sessionStorage.setItem('cropDraft', JSON.stringify(draft));
+        location.href = '/kisan/crops/new';
+      });
+      card.appendChild(go);
+      box.appendChild(card);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // ---------- bolkar sunana (text to speech) ----------
+    function speak(text, done) {
+      const finish = () => { if (done) done(); };
+      if (!synth || !speakOn || !text) return finish();
+
+      const code = ttsLang();
+      const voices = synth.getVoices();
+      const v = voices.find((x) => x.lang && x.lang.replace('_', '-').toLowerCase().startsWith(code.split('-')[0].toLowerCase()));
+      if (voices.length && !v) {
+        // is device par is bhasha ki awaaz nahi hai
+        if (!warnedNoVoice) {
+          warnedNoVoice = true;
+          add('This device has no voice for this language, so replies will be shown as text only.', 'bot');
+        }
+        return finish();
+      }
+
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = code;
+      u.rate = 0.95;
+      if (v) u.voice = v;
+      u.onend = finish;
+      u.onerror = finish;
+      synth.speak(u);
+    }
+
+    // ---------- sunna (speech to text) ----------
+    function stopVoice() {
+      voiceMode = false;
+      silentTries = 0;
+      mic.classList.remove('rec');
+      input.placeholder = '✍️ / 🎤';
+      if (rec) { try { rec.abort(); } catch (e) { } }
+      if (synth) synth.cancel();
+    }
+
+    function listen() {
+      if (!SR || !voiceMode) return;
+      rec = new SR();
+      rec.lang = lang;
+      rec.interimResults = true;
+      rec.continuous = false;
+      let heard = '';
+
+      rec.onstart = () => {
+        mic.classList.add('rec');
+        input.placeholder = '🎤 ...';
+      };
+      rec.onresult = (e) => {
+        let t = '';
+        for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+        heard = t;
+        input.value = t;
+      };
+      rec.onerror = (e) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          stopVoice();
+          add('Mic permission is blocked. Allow the mic from the lock icon in the address bar.', 'bot');
+        } else if (e.error === 'language-not-supported') {
+          stopVoice();
+          add('This browser cannot listen in this language. Please type, or try another language.', 'bot');
+        }
+      };
+      rec.onend = () => {
+        mic.classList.remove('rec');
+        input.placeholder = '✍️ / 🎤';
+        if (!voiceMode) return;
+        if (heard.trim()) {
+          silentTries = 0;
+          ask(heard.trim(), true);
+        } else if (++silentTries >= 2) {
+          stopVoice();
+          add('🎤 ?', 'bot');
+        } else {
+          listen();                           // ek baar aur sunne ki koshish
+        }
+      };
+      try { rec.start(); } catch (e) { }
+    }
+
+    // ---------- server se baat ----------
+    async function ask(text, viaVoice) {
+      input.value = '';
+      add(text, 'me');
+      history.push({ role: 'user', content: text });
+
+      const wait = add('...', 'bot');
+      send.disabled = true;
+      let draft = null;
+      let reply = '';
+      try {
+        const r = await fetch('/kisan/chatbot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: history, voice: !!viaVoice, lang })
+        });
+        const data = await r.json();
+        reply = data.reply || '...';
+        draft = data.draft || null;
+        wait.textContent = reply;
+        // model ko apna pichhla jawab usi JSON format mein dikhao
+        history.push({ role: 'assistant', content: JSON.stringify({ reply, draft }) });
+        if (draft) showDraft(draft);
+      } catch (err) {
+        wait.textContent = 'Network error.';
+        history.pop();
+      }
+      send.disabled = false;
+
+      if (viaVoice && voiceMode) {
+        if (draft) {
+          voiceMode = false;                  // draft taiyaar: sunna band
+          speak(reply);
+        } else {
+          speak(reply, () => { if (voiceMode) listen(); });   // jawab ke baad dobara sunna
+        }
+      } else {
+        input.focus();
+      }
+    }
+
+    // ---------- events ----------
+    add(STR[lang].hello, 'bot');
+
+    langSel.addEventListener('change', () => {
+      lang = langSel.value;
+      try { localStorage.setItem('ccLang', lang); } catch (e) { }
+      warnedNoVoice = false;
+      stopVoice();
+      add(STR[lang].hello, 'bot');
+    });
+
+    btn.addEventListener('click', () => {
+      panel.classList.toggle('open');
+      if (panel.classList.contains('open')) input.focus(); else stopVoice();
+    });
+    document.getElementById('ccClose').addEventListener('click', () => {
+      panel.classList.remove('open');
+      stopVoice();
+    });
+
+    speakBtn.addEventListener('click', () => {
+      speakOn = !speakOn;
+      speakBtn.textContent = speakOn ? '🔊' : '🔇';
+      if (!speakOn && synth) synth.cancel();
+    });
+
+    mic.addEventListener('click', () => {
+      if (!SR) {
+        add('Voice does not work in this browser. Please use Chrome or Edge.', 'bot');
+        return;
+      }
+      if (voiceMode) { stopVoice(); return; }
+      voiceMode = true;
+      silentTries = 0;
+      if (synth) synth.getVoices();           // voices load karwao
+      listen();
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      if (voiceMode) stopVoice();
+      ask(text, false);
+    });
+
+    window.addEventListener('beforeunload', () => { if (synth) synth.cancel(); });
+  })();
+</script>
