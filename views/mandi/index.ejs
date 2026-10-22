@@ -1,0 +1,89 @@
+<% layout('/layouts/boilerplate') %>
+
+<h3 class="mb-1">Mandi Bhav 📈</h3>
+<p class="text-muted">Sarkari mandi (Agmarknet) ke taaza thok bhav, ₹ per kg mein.</p>
+
+<form id="mForm" class="row g-2 mb-3">
+  <div class="col-md-4">
+    <input id="mCrop" class="form-control" list="mCrops" placeholder="Fasal (jaise Tomato, Potato, Wheat)" required>
+    <datalist id="mCrops">
+      <% ['Tomato','Potato','Onion','Brinjal','Cabbage','Cauliflower','Carrot','Garlic','Green Chilli','Banana','Apple','Mango','Wheat','Rice','Maize','Bajra','Jowar','Gram','Mustard','Soyabean','Groundnut'].forEach(c => { %>
+        <option value="<%= c %>">
+      <% }) %>
+    </datalist>
+  </div>
+  <div class="col-md-3">
+    <select id="mState" class="form-select">
+      <option value="">Poora India</option>
+      <% states.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <input id="mDistrict" class="form-control" placeholder="Zila (optional)">
+  </div>
+  <div class="col-md-2 d-grid">
+    <button class="btn btn-success" id="mGo">Dekho</button>
+  </div>
+</form>
+
+<div id="mOut"></div>
+
+<script>
+  (function () {
+    const form = document.getElementById('mForm');
+    const out = document.getElementById('mOut');
+    const stateSel = document.getElementById('mState');
+    try { const s = localStorage.getItem('mandiState'); if (s) stateSel.value = s; } catch (e) { }
+
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      try { localStorage.setItem('mandiState', stateSel.value); } catch (e) { }
+      out.replaceChildren(el('div', 'text-muted', 'Bhav dhundh raha hoon...'));
+      const q = new URLSearchParams({
+        commodity: document.getElementById('mCrop').value,
+        state: stateSel.value,
+        district: document.getElementById('mDistrict').value
+      });
+      try {
+        const r = await fetch('/mandi/api?' + q);
+        const d = await r.json();
+        if (!r.ok) return out.replaceChildren(el('div', 'alert alert-danger', d.error || 'Error'));
+        if (!d.found) return out.replaceChildren(el('div', 'alert alert-warning',
+          'Is fasal ka bhav nahi mila. Naam English mein likho ya zila hata kar dekho.'));
+
+        const box = el('div');
+        const card = el('div', 'card p-3 mb-3');
+        card.appendChild(el('h5', 'mb-1', d.commodity + ' · ' + d.date));
+        card.appendChild(el('div', 'fs-4 text-success fw-semibold',
+          '₹' + d.summary.low + ' – ₹' + d.summary.high + ' / kg'));
+        card.appendChild(el('div', 'text-muted', 'Average (modal): ₹' + d.summary.avg + '/kg · ' + d.summary.markets + ' mandi'));
+        box.appendChild(card);
+
+        const wrap = el('div', 'card');
+        const tw = el('div', 'table-responsive');
+        const t = el('table', 'table align-middle mb-0');
+        const head = el('thead'); const hr = el('tr');
+        ['Mandi', 'Zila', 'Kism', 'Min', 'Modal', 'Max'].forEach((h) => hr.appendChild(el('th', '', h)));
+        head.appendChild(hr); t.appendChild(head);
+        const body = el('tbody');
+        d.rows.forEach((x) => {
+          const tr = el('tr');
+          [x.market, x.district, x.variety, '₹' + (x.min ?? '-'), '₹' + x.modal, '₹' + (x.max ?? '-')]
+            .forEach((c) => tr.appendChild(el('td', '', c || '-')));
+          body.appendChild(tr);
+        });
+        t.appendChild(body); tw.appendChild(t); wrap.appendChild(tw); box.appendChild(wrap);
+        out.replaceChildren(box);
+      } catch (e) {
+        out.replaceChildren(el('div', 'alert alert-danger', 'Network error.'));
+      }
+    });
+  })();
+</script>
