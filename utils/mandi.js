@@ -13,6 +13,18 @@ exports.STATES = [
 ];
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// log jo naam likhte hain -> sarkari data mein jo naam hote hain
+const ALIASES = {
+  rice: 'rice|paddy', chawal: 'rice|paddy', dhan: 'paddy',
+  gehu: 'wheat', gehun: 'wheat', makka: 'maize|corn', bajra: 'bajra', jowar: 'jowar',
+  tamatar: 'tomato', aloo: 'potato', pyaz: 'onion', pyaaz: 'onion', lahsun: 'garlic',
+  adrak: 'ginger', baingan: 'brinjal', gajar: 'carrot', gobhi: 'cauliflower',
+  'patta gobhi': 'cabbage', mirch: 'chilli', haldi: 'turmeric', kela: 'banana',
+  seb: 'apple', aam: 'mango', chana: 'gram', arhar: 'arhar|tur', moong: 'moong|green gram',
+  masoor: 'masoor|lentil', sarson: 'mustard', soyabean: 'soy'
+};
+
 const titleCase = (s) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
@@ -27,7 +39,8 @@ const perKg = (v) => {
 
 // ---------- 1) Atlas se ----------
 async function fromDb({ commodity, state, district }) {
-  const q = { commodity: new RegExp(esc(commodity), 'i') };
+   const pattern = ALIASES[commodity.toLowerCase()] || esc(commodity);
+  const q = { commodity: new RegExp(pattern, 'i') };
   if (state) q.state = state;
   if (district) q.district = new RegExp(esc(district), 'i');
   const docs = await MandiPrice.find(q).lean();
@@ -115,5 +128,56 @@ exports.getMandiPrices = async (input) => {
 
   const data = summarize(rows, commodity);
   cache.set(key, { t: Date.now(), data });
+  return data;
+};
+
+// ---------- saari fasal ek saath ----------
+const allCache = new Map();
+
+exports.listAllPrices = async (input) => {
+  const state = clean(input.state, 40);
+  const key = state.toLowerCase();
+  const hit = allCache.get(key);
+  if (hit && Date.now() - hit.t < TTL) return hit.data;
+
+  // har fasal ka sabse taaza din ka bhav
+  const pipeline = [
+    ...(state ? [{ $match: { state } }] : []),
+    {
+      $group: {
+        _id: { c: '$commodity', t: '$t' },
+        date: { $first: '$date' },
+        low: { $min: { $ifNull: ['$min', '$modal'] } },
+        high: { $max: { $ifNull: ['$max', '$modal'] } },
+        avg: { $avg: '$modal' },
+        mk: { $addToSet: '$market' }
+      }
+    },
+    { $sort: { '_id.t': -1 } },
+    {
+      $group: {
+        _id: '$_id.c',
+        date: { $first: '$date' },
+        low: { $first: '$low' },
+        high: { $first: '$high' },
+        avg: { $first: '$avg' },
+        mk: { $first: '$mk' }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ];
+
+  const rows = await MandiPrice.aggregate(pipeline);
+  const items = rows.map((r) => ({
+    commodity: r._id,
+    date: r.date,
+    low: Math.round(r.low * 100) / 100,
+    high: Math.round(r.high * 100) / 100,
+    avg: Math.round(r.avg * 100) / 100,
+    markets: r.mk.length
+  }));
+
+  const data = { items };
+  allCache.set(key, { t: Date.now(), data });
   return data;
 };

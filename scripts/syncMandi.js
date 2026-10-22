@@ -85,8 +85,9 @@ async function page(offset) {
   }
 
   if (total > 0) {
-    const old = await MandiPrice.deleteMany({ syncId: { $ne: syncId } });   // purana data hatao
-    console.log('Purane records hataye:', old.deletedCount);
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const old = await MandiPrice.deleteMany({ t: { $lt: cutoff } });
+    console.log('30 din se purane records hataye:', old.deletedCount);
   }
   console.log('Sync poora. Total:', total);
   await mongoose.disconnect();
