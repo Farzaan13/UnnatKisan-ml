@@ -8,7 +8,7 @@ const { orderRules, checkoutRules, handleErrors } = require('../middleware/valid
 const uploadImage = require('../middleware/upload');
 const { deliveryOwner } = require('../utils/delivery');
 
-const uploadBuffer = require('../utils/cloudinary');
+const { uploadBuffer } = require('../utils/cloudinary');
 const { CITY_NAMES, CITIES } = require('../utils/cities');
 const { roadKmToCity } = require('../utils/geo');
 
