@@ -9,12 +9,36 @@ const { cropRules, handleErrors } = require('../middleware/validators');
 
 const { uploadBuffer, removeByUrl } = require('../utils/cloudinary');
 const { CITY_NAMES } = require('../utils/cities');
-const { planRoute } = require('../utils/geo');
+const { planRoute, planRouteML, findClosestFarmersML } = require('../utils/geo');
 const { buildSeries, forecast, getMLDemandAndPriceForecast } = require('../utils/forecast');
 
 const { chatCrop } = require('../utils/cropChat');
 const router = express.Router();
 
+// API: Find closest farmers to buy from (accessible to all logged-in buyers, bulk buyers & kisans)
+router.get('/api/closest-farmers', isLoggedIn, async (req, res) => {
+  try {
+    const buyerLat = parseFloat(req.query.lat) || 26.4499;
+    const buyerLng = parseFloat(req.query.lng) || 80.3319;
+    const cropFilter = req.query.crop || '';
+    const requiredQtyKg = req.query.qty ? parseFloat(req.query.qty) : null;
+    const isBulkBuyer = req.session.user && req.session.user.role === 'bulkbuyer';
+
+    const crops = await Crop.find({ quantity: { $gt: 0 } }).populate('kisan', 'name phone');
+    const result = await findClosestFarmersML({
+      buyerLat,
+      buyerLng,
+      cropFilter,
+      requiredQtyKg,
+      isBulkBuyer,
+      crops
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 // is router ke saare routes sirf logged-in kisan ke liye
 router.use(isLoggedIn, allowRoles('kisan', 'bulkbuyer'));
 
@@ -217,21 +241,27 @@ router.patch('/orders/:id/payment/:decision', async (req, res) => {
   res.redirect('/kisan/orders');
 });
 
-// Delivery plan: accepted orders ka optimized route
+
+// Delivery plan: accepted orders ka optimized route + ML perishability route
 router.get('/delivery-plan', async (req, res) => {
   const pickup = CITY_NAMES.includes(req.query.pickup) ? req.query.pickup : 'Kanpur';
 
   const orders = await Order.find({ kisan: req.session.user.id, status: 'accepted' })
-    .populate('crop', 'name')
+    .populate('crop', 'name category')
     .populate('buyer', 'name phone')
     .sort({ createdAt: 1 });
 
+  const mlRoute = await planRouteML(pickup, orders);
+
   res.render('kisan/delivery', {
-    title: 'Delivery plan', pickup, cities: CITY_NAMES,
-    orderCount: orders.length, plan: planRoute(pickup, orders)
+    title: 'Delivery plan',
+    pickup,
+    cities: CITY_NAMES,
+    orderCount: orders.length,
+    plan: planRoute(pickup, orders),
+    mlRoute
   });
 });
-
 // 1. Live AI price & demand endpoint for _cropForm.ejs
 router.get('/api/price-suggest', async (req, res) => {
   try {

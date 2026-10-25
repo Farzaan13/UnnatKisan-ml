@@ -1,180 +1,370 @@
 <% layout('/layouts/boilerplate') %>
 
-  <% const hasFilter=filters.q || filters.category || filters.maxPrice || filters.need || filters.sort !=='new' ; %>
+<% const hasFilter = filters.q || filters.category || filters.maxPrice || filters.need || filters.sort !== 'new'; %>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <div>
-        <h3 class="mb-0">Bulk Marketplace 🚚</h3>
-        <small class="text-muted">Purchase directly from farmer/ FPOOs</small>
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-0">Bulk Marketplace 🚚</h3>
+    <small class="text-muted">Purchase directly from farmer / FPOs</small>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="<%= base %>/cart" class="btn btn-outline-primary">
+      <i class="fa-solid fa-cart-shopping"></i> Cart
+      <% if (cartCount) { %>
+        <span class="badge text-bg-warning"><%= cartCount %></span>
+      <% } %>
+    </a>
+    <a href="<%= base %>/orders" class="btn btn-outline-success">
+      <i class="fa-solid fa-box"></i> my orders
+    </a>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small">Available crops</div>
+      <div class="fs-4 fw-bold"><%= crops.length %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small">Total stock</div>
+      <div class="fs-4 fw-bold"><%= crops.reduce((s, c) => s + c.quantity, 0) %> kg</div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6">
+    <div class="alert alert-info mb-0 h-100 d-flex align-items-center">
+      Only crops with stock available for bulk purchase will be displayed.
+    </div>
+  </div>
+</div>
+
+<!-- 🤖 AI Closest Farmer & Virtual FPO Bulk Pooling Finder -->
+<div class="card border-success shadow-sm mb-3" id="closest-farmer-widget" data-base="<%= base %>">
+  <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <i class="fa-solid fa-route me-1"></i>
+      <strong>AI Closest Farmer & Virtual FPO Milk-Run Pooler</strong>
+    </div>
+    <span class="badge bg-light text-success">Haversine GPS + Bulk Route Pooling</span>
+  </div>
+
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">Filter Crop (Optional)</label>
+        <input type="text" id="cf-crop" class="form-control form-control-sm" value="<%= filters.q || '' %>" placeholder="e.g. Potato, Onion, Wheat">
       </div>
-      <div class="d-flex gap-2">
-        <a href="<%= base %>/cart" class="btn btn-outline-primary">
-          <i class="fa-solid fa-cart-shopping"></i> Cart
-          <% if (cartCount) { %><span class="badge text-bg-warning">
-              <%= cartCount %>
-            </span>
-            <% } %>
-        </a>
-        <a href="<%= base %>/orders" class="btn btn-outline-success">
-          <i class="fa-solid fa-box"></i> my orders
-        </a>
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">Bulk Quantity Needed (kg)</label>
+        <input type="number" id="cf-qty" class="form-control form-control-sm" value="<%= filters.need || '' %>" placeholder="e.g. 1000">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">Your Warehouse City</label>
+        <select id="cf-city" class="form-select form-select-sm">
+          <option value="26.4499,80.3319">Kanpur</option>
+          <option value="26.8467,80.9462">Lucknow</option>
+          <option value="25.3176,82.9739">Varanasi</option>
+          <option value="27.1767,78.0081">Agra</option>
+          <option value="25.4358,81.8463">Prayagraj</option>
+          <option value="28.5355,77.3910">Noida</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button type="button" id="cf-gps-btn" class="btn btn-sm btn-outline-success w-50">
+          <i class="fa-solid fa-location-crosshairs"></i> Use GPS
+        </button>
+        <button type="button" id="cf-search-btn" class="btn btn-sm btn-success w-50">
+          <i class="fa-solid fa-magnifying-glass-location"></i> Find Closest
+        </button>
       </div>
     </div>
 
-    <!-- Summary -->
-    <div class="row g-3 mb-3">
-      <div class="col-6 col-md-3">
-        <div class="card p-3 text-center">
-          <div class="text-muted small">Available crops</div>
-          <div class="fs-4 fw-bold">
-            <%= crops.length %>
-          </div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="card p-3 text-center">
-          <div class="text-muted small">Total stock</div>
-          <div class="fs-4 fw-bold">
-            <%= crops.reduce((s, c)=> s + c.quantity, 0) %> kg
-          </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div class="alert alert-info mb-0 h-100 d-flex align-items-center">
-          Only crops with stock available for bulk purchase will be displayed.
-        </div>
+    <div id="cf-status" class="small text-muted mt-2"></div>
+
+    <div id="cf-results-wrap" class="d-none mt-3">
+      <div id="cf-winner-banner" class="alert alert-success py-2 mb-2"></div>
+      <div id="cf-fpo-banner" class="alert alert-primary py-2 mb-3 d-none"></div>
+
+      <div id="cf-map" class="rounded border mb-3" style="height: 260px;"></div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Rank</th>
+              <th>Farmer & Location</th>
+              <th>Crop (Available Stock)</th>
+              <th>Distance & ETA</th>
+              <th>Freshness Score</th>
+              <th>Bulk Landed Rate (Crop + Logistics)</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="cf-tbody"></tbody>
+        </table>
       </div>
     </div>
+  </div>
+</div>
 
-    <!-- Search / Filters -->
-    <form method="GET" action="<%= base %>/dashboard" class="card p-3 mb-3">
-      <div class="row g-2">
-        <div class="col-lg-4">
-          <div class="input-group">
-            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input class="form-control" type="search" name="q" value="<%= filters.q %>"
-              placeholder="Crop, location ya kisan / gaon dhundo...">
-          </div>
-        </div>
-        <div class="col-6 col-lg-2">
-          <input class="form-control" type="number" min="1" name="need" value="<%= filters.need %>"
-            placeholder="Mujhe chahiye (kg)">
-        </div>
-        <div class="col-6 col-lg-2">
-          <select class="form-select" name="category" onchange="this.form.submit()">
-            <option value="">Sab category</option>
-            <% categories.forEach(c=> { %>
-              <option value="<%= c %>" <%=filters.category===c ? 'selected' : '' %>><%= c %>
-              </option>
-              <% }) %>
-          </select>
-        </div>
-        <div class="col-6 col-lg-1">
-          <input class="form-control" type="number" min="1" name="maxPrice" value="<%= filters.maxPrice %>"
-            placeholder="Max ₹/kg">
-        </div>
-        <div class="col-6 col-lg-2">
-          <select class="form-select" name="sort" onchange="this.form.submit()">
-            <option value="new" <%=filters.sort==='new' ? 'selected' : '' %>>Naya pehle</option>
-            <option value="low" <%=filters.sort==='low' ? 'selected' : '' %>>Price: kam se zyada</option>
-            <option value="high" <%=filters.sort==='high' ? 'selected' : '' %>>Price: zyada se kam</option>
-          </select>
-        </div>
-        <div class="col-12 col-lg-1 d-flex gap-2">
-          <button type="submit" class="btn btn-primary flex-grow-1" title="Search">
-            <i class="fa-solid fa-magnifying-glass"></i>
-          </button>
-        </div>
+<!-- Search / Filters -->
+<form method="GET" action="<%= base %>/dashboard" class="card p-3 mb-3">
+  <div class="row g-2">
+    <div class="col-lg-4">
+      <div class="input-group">
+        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <input class="form-control" type="search" name="q" value="<%= filters.q %>"
+          placeholder="Crop, location ya kisan / gaon dhundo...">
       </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <input class="form-control" type="number" min="1" name="need" value="<%= filters.need %>"
+        placeholder="Mujhe chahiye (kg)">
+    </div>
+    <div class="col-6 col-lg-2">
+      <select class="form-select" name="category" onchange="this.form.submit()">
+        <option value="">Sab category</option>
+        <% categories.forEach(c => { %>
+          <option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-6 col-lg-1">
+      <input class="form-control" type="number" min="1" name="maxPrice" value="<%= filters.maxPrice %>"
+        placeholder="Max ₹/kg">
+    </div>
+    <div class="col-6 col-lg-2">
+      <select class="form-select" name="sort" onchange="this.form.submit()">
+        <option value="new" <%= filters.sort === 'new' ? 'selected' : '' %>>Naya pehle</option>
+        <option value="low" <%= filters.sort === 'low' ? 'selected' : '' %>>Price: kam se zyada</option>
+        <option value="high" <%= filters.sort === 'high' ? 'selected' : '' %>>Price: zyada se kam</option>
+      </select>
+    </div>
+    <div class="col-12 col-lg-1 d-flex gap-2">
+      <button type="submit" class="btn btn-primary flex-grow-1" title="Search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </button>
+    </div>
+  </div>
 
-      <% if (hasFilter) { %>
-        <div class="mt-2 d-flex justify-content-between align-items-center">
-          <span class="small text-muted">
-            <%= crops.length %> crop found
-          </span>
-          <a href="<%= base %>/dashboard" class="small text-decoration-none">
-            <i class="fa-solid fa-xmark"></i> Filter remove
-          </a>
-        </div>
-        <% } %>
-    </form>
+  <% if (hasFilter) { %>
+    <div class="mt-2 d-flex justify-content-between align-items-center">
+      <span class="small text-muted"><%= crops.length %> crop found</span>
+      <a href="<%= base %>/dashboard" class="small text-decoration-none">
+        <i class="fa-solid fa-xmark"></i> Filter remove
+      </a>
+    </div>
+  <% } %>
+</form>
 
-    <!-- Results -->
-    <% if (crops.length===0) { %>
-      <div class="card p-5 text-center text-muted">
-      not any crop found
-        <div class="small mt-2">
-         The bulk dashboard displays only those crops for which the stock is not less than the minimum bulk quantity.
-          <% if (filters.need) { %>
-            Aapne <strong>
-              <%= filters.need %> kg
-            </strong> It has been requested; try adjusting the amount—increase or decrease it.
-            <% } %>
-        </div>
-        <% if (hasFilter) { %>
-          <div class="mt-3">
-            <a href="<%= base %>/dashboard" class="btn btn-outline-secondary btn-sm">Filter remove</a>
-          </div>
-          <% } %>
+<!-- Results -->
+<% if (crops.length === 0) { %>
+  <div class="card p-5 text-center text-muted">
+    not any crop found
+    <div class="small mt-2">
+      The bulk dashboard displays only those crops for which the stock is not less than the minimum bulk quantity.
+      <% if (filters.need) { %>
+        Aapne <strong><%= filters.need %> kg</strong> It has been requested; try adjusting the amount—increase or decrease it.
+      <% } %>
+    </div>
+    <% if (hasFilter) { %>
+      <div class="mt-3">
+        <a href="<%= base %>/dashboard" class="btn btn-outline-secondary btn-sm">Filter remove</a>
       </div>
-      <% } else { %>
-        <div class="card">
-          <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Crop</th>
-                  <th>Category</th>
-                  <th>Rate</th>
-                  <th>Available</th>
-                  <th>Min. order</th>
-                  <th>Min. order price</th>
-                  <th>Location</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <% crops.forEach(crop=> { %>
-                  <tr>
-                    <td>
-                      <div class="d-flex align-items-center gap-2">
-                        <% if (crop.image) { %>
-                          <img src="<%= crop.image %>" alt="<%= crop.name %>"
-                            style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px;">
-                          <% } else { %>
-                            <div class="d-flex align-items-center justify-content-center"
-                              style="width: 48px; height: 48px; border-radius: 8px; background: var(--background-soft);">
-                              <i class="fa-solid fa-wheat-awn text-success"></i>
-                            </div>
-                            <% } %>
-                              <strong>
-                                <%= crop.name %>
-                              </strong>
-                      </div>
-                    </td>
-                    <td><span class="badge text-bg-success">
-                        <%= crop.category %>
-                      </span></td>
-                    <td>₹<%= crop.priceFor('bulkbuyer') %> / kg</td>
-                    <td>
-                      <%= crop.quantity %> kg
-                    </td>
-                    <td>
-                      <%= crop.minBulkQty %> kg
-                    </td>
-                    <td>₹<%= (crop.minBulkQty * crop.priceFor('bulkbuyer')).toLocaleString('en-IN') %>
-                    </td>
-                    <td class="text-muted small">
-                      <%= crop.location || '-' %>
-                    </td>
-                    <td class="text-end">
-                      <a href="<%= base %>/crops/<%= crop._id %>" class="btn btn-primary btn-sm">Bulk order</a>
-                    </td>
-                  </tr>
-                  <% }) %>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <% } %>
+    <% } %>
+  </div>
+<% } else { %>
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Crop</th>
+            <th>Category</th>
+            <th>Rate</th>
+            <th>Available</th>
+            <th>Min. order</th>
+            <th>Min. order price</th>
+            <th>Location</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% crops.forEach(crop => { %>
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <% if (crop.image) { %>
+                    <img src="<%= crop.image %>" alt="<%= crop.name %>"
+                      style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px;">
+                  <% } else { %>
+                    <div class="d-flex align-items-center justify-content-center"
+                      style="width: 48px; height: 48px; border-radius: 8px; background: var(--background-soft);">
+                      <i class="fa-solid fa-wheat-awn text-success"></i>
+                    </div>
+                  <% } %>
+                  <strong><%= crop.name %></strong>
+                </div>
+              </td>
+              <td><span class="badge text-bg-success"><%= crop.category %></span></td>
+              <td>₹<%= crop.priceFor('bulkbuyer') %> / kg</td>
+              <td><%= crop.quantity %> kg</td>
+              <td><%= crop.minBulkQty %> kg</td>
+              <td>₹<%= (crop.minBulkQty * crop.priceFor('bulkbuyer')).toLocaleString('en-IN') %></td>
+              <td class="text-muted small"><%= crop.location || '-' %></td>
+              <td class="text-end">
+                <a href="<%= base %>/crops/<%= crop._id %>" class="btn btn-primary btn-sm">Bulk order</a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% } %>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+  (function () {
+    const widget = document.getElementById('closest-farmer-widget');
+    const baseUrl = widget ? widget.dataset.base : '/buyer';
+    let buyerLat = 26.4499, buyerLng = 80.3319;
+    let map, layerGroup;
+
+    const citySelect = document.getElementById('cf-city');
+    const gpsBtn = document.getElementById('cf-gps-btn');
+    const searchBtn = document.getElementById('cf-search-btn');
+    const cropInput = document.getElementById('cf-crop');
+    const qtyInput = document.getElementById('cf-qty');
+    const statusEl = document.getElementById('cf-status');
+    const wrapEl = document.getElementById('cf-results-wrap');
+    const winnerEl = document.getElementById('cf-winner-banner');
+    const fpoEl = document.getElementById('cf-fpo-banner');
+    const tbody = document.getElementById('cf-tbody');
+
+    citySelect.addEventListener('change', () => {
+      const [lat, lng] = citySelect.value.split(',').map(Number);
+      buyerLat = lat;
+      buyerLng = lng;
+      runClosestSearch();
+    });
+
+    gpsBtn.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        statusEl.textContent = 'Geolocation is not supported by your browser.';
+        return;
+      }
+      statusEl.textContent = 'Detecting your live GPS coordinates...';
+      navigator.geolocation.getCurrentPosition((pos) => {
+        buyerLat = pos.coords.latitude;
+        buyerLng = pos.coords.longitude;
+        statusEl.textContent = '✓ Live GPS locked (' + buyerLat.toFixed(4) + ', ' + buyerLng.toFixed(4) + ')';
+        runClosestSearch();
+      }, () => {
+        statusEl.textContent = 'Location permission denied; using selected city coordinates.';
+        runClosestSearch();
+      });
+    });
+
+    searchBtn.addEventListener('click', runClosestSearch);
+
+    async function runClosestSearch() {
+      statusEl.textContent = 'Calculating road distances, spoilage risk & Virtual FPO bulk pool...';
+      const params = new URLSearchParams({
+        lat: buyerLat,
+        lng: buyerLng,
+        crop: cropInput.value.trim(),
+        qty: qtyInput.value.trim()
+      });
+
+      try {
+        const res = await fetch('/kisan/api/closest-farmers?' + params.toString());
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          statusEl.textContent = 'Could not load closest farmers right now.';
+          return;
+        }
+
+        const data = json.data;
+        if (!data.farmers || !data.farmers.length) {
+          statusEl.textContent = 'No matching farmers found with stock.';
+          wrapEl.classList.add('d-none');
+          return;
+        }
+
+        statusEl.textContent = '';
+        wrapEl.classList.remove('d-none');
+
+        const best = data.closestFarmer;
+        winnerEl.innerHTML =
+          '🏆 <strong>Closest Farmer to Buy From:</strong> <strong>' + best.kisanName + '</strong> (' + best.location + ') — ' +
+          '<strong>' + best.distanceKm + ' km away</strong> (~' + best.etaMins + ' mins transit) | ' +
+          'Crop: <strong>' + best.cropName + '</strong> | Bulk Landed Rate: <strong>₹' + best.landedCostKg + '/kg</strong> ' +
+          '(₹' + best.basePriceKg + ' bulk price + ₹' + best.transportCostKg + ' logistics) | Freshness: <strong>' + best.freshnessScore + '%</strong>';
+
+        if (data.fpoPool && data.fpoPool.allocations && data.fpoPool.allocations.length > 1) {
+          fpoEl.classList.remove('d-none');
+          const listStr = data.fpoPool.allocations
+            .map(a => a.kisanName + ' (' + a.takeQtyKg + ' kg @ ' + a.distanceKm + ' km)')
+            .join(' + ');
+          fpoEl.innerHTML =
+            '🤝 <strong>AI Virtual FPO Milk-Run Pool (' + data.fpoPool.fulfilledQtyKg + '/' + data.fpoPool.requestedQtyKg + ' kg):</strong> ' +
+            'Bundled closest ' + data.fpoPool.farmersCount + ' farmers into 1 pooled truck route: ' + listStr;
+        } else {
+          fpoEl.classList.add('d-none');
+        }
+
+        tbody.innerHTML = '';
+        data.farmers.slice(0, 8).forEach((f, idx) => {
+          const badgeHtml = f.badge ? '<span class="badge text-bg-success ms-1">' + f.badge + '</span>' : '';
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><strong>#' + (idx + 1) + '</strong></td>' +
+            '<td><strong>' + f.kisanName + '</strong> ' + badgeHtml + '<div class="small text-muted">' + f.location + '</div></td>' +
+            '<td>' + f.cropName + ' <span class="badge text-bg-light border">' + f.availableQtyKg + ' kg</span></td>' +
+            '<td><strong>' + f.distanceKm + ' km</strong><div class="small text-muted">~' + f.etaMins + ' mins</div></td>' +
+            '<td><span class="badge text-bg-' + (f.freshnessScore >= 85 ? 'success' : 'warning') + '">' + f.freshnessScore + '% Fresh</span></td>' +
+            '<td><strong>₹' + f.landedCostKg + '/kg</strong><div class="small text-muted">₹' + f.basePriceKg + ' + ₹' + f.transportCostKg + ' shipping</div></td>' +
+            '<td><a href="' + baseUrl + '/crops/' + f.cropId + '" class="btn btn-sm btn-primary">Bulk order</a></td>';
+          tbody.appendChild(tr);
+        });
+
+        if (!map) {
+          map = L.map('cf-map').setView([buyerLat, buyerLng], 8);
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19, attribution: '&copy; OpenStreetMap'
+          }).addTo(map);
+          layerGroup = L.layerGroup().addTo(map);
+        }
+        layerGroup.clearLayers();
+        map.setView([buyerLat, buyerLng], 8);
+
+        L.circleMarker([buyerLat, buyerLng], { radius: 8, color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.9 })
+          .bindPopup('<strong>Your Warehouse / Location (Bulk Buyer)</strong>')
+          .addTo(layerGroup);
+
+        data.farmers.slice(0, 6).forEach((f, idx) => {
+          const isClosest = idx === 0;
+          L.marker([f.lat, f.lng])
+            .bindPopup('<strong>#' + (idx + 1) + ' ' + f.kisanName + '</strong> (' + f.cropName + ')<br>' + f.distanceKm + ' km | ₹' + f.landedCostKg + '/kg')
+            .addTo(layerGroup);
+
+          L.polyline([[buyerLat, buyerLng], [f.lat, f.lng]], {
+            color: isClosest ? '#16a34a' : '#9ca3af',
+            weight: isClosest ? 4 : 2,
+            dashArray: isClosest ? null : '5, 5'
+          }).addTo(layerGroup);
+        });
+
+        setTimeout(() => map.invalidateSize(), 100);
+      } catch (err) {
+        statusEl.textContent = 'Error connecting to Closest Farmer AI service.';
+      }
+    }
+  })();
+</script>
