@@ -123,8 +123,8 @@ app.use('/track', require('./routes/track'));
 // 404
 app.use((req, res) => {
   res.status(404).render('error', {
-    title: 'Page nahi mila',
-    message: 'Ye page maujood nahi hai.'
+    title: 'Page not found',
+    message: 'This page is not available.'
   });
 });
 

@@ -5,9 +5,9 @@
     <h3 class="mb-0">Delivery management 🚚</h3>
     <small class="text-muted">
       <% if (dKind === 'admin') { %>
-        Aap Farmer ↔ Customer orders ki delivery manage karte ho.
+        You manage the delivery of orders between farmers and customers.
       <% } else { %>
-        Aap Farmer ↔ Aap aur Aap ↔ Customer orders ki delivery manage karte ho.
+       You manage the delivery of orders between the farmer and the customer.
       <% } %>
     </small>
   </div>
@@ -18,27 +18,27 @@
   <div class="card-header d-flex justify-content-between align-items-center bg-white">
     <strong>Delivery partners (<%= partners.length %>)</strong>
     <button class="btn btn-sm btn-success" type="button" data-bs-toggle="collapse" data-bs-target="#addPartner">
-      <i class="fa-solid fa-plus"></i> Naya partner
+      <i class="fa-solid fa-plus"></i> New partner
     </button>
   </div>
 
   <div class="collapse" id="addPartner">
     <form action="<%= dBase %>/partners" method="POST" class="row g-2 p-3 border-bottom">
-      <div class="col-md-3"><input name="name" class="form-control" placeholder="Naam" maxlength="60" required></div>
-      <div class="col-md-3"><input name="email" type="email" class="form-control" placeholder="Email (login ke liye)" required></div>
+      <div class="col-md-3"><input name="name" class="form-control" placeholder="Name" maxlength="60" required></div>
+      <div class="col-md-3"><input name="email" type="email" class="form-control" placeholder="Email " required></div>
       <div class="col-md-2"><input name="phone" class="form-control" placeholder="10 digit phone" maxlength="10" required></div>
-      <div class="col-md-2"><input name="vehicle" class="form-control" placeholder="Gaadi (bike, tempo...)" maxlength="40"></div>
+      <div class="col-md-2"><input name="vehicle" class="form-control" placeholder=" (bike, tempo...)" maxlength="40"></div>
       <div class="col-md-2"><input name="password" type="password" class="form-control" placeholder="Password (8+)" minlength="8" required></div>
-      <div class="col-12"><button class="btn btn-success">Partner banao</button></div>
+      <div class="col-12"><button class="btn btn-success">Create Partner </button></div>
     </form>
   </div>
 
   <% if (partners.length === 0) { %>
-    <div class="p-4 text-center text-muted">Abhi koi delivery partner nahi hai. Pehle ek partner banao.</div>
+    <div class="p-4 text-center text-muted">There are no delivery partners yet. First, add a partner.</div>
   <% } else { %>
     <div class="table-responsive">
       <table class="table align-middle mb-0">
-        <thead><tr><th>Naam</th><th>Email</th><th>Phone</th><th>Gaadi</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Vehicle</th><th>Status</th><th></th></tr></thead>
         <tbody>
           <% partners.forEach(p => { %>
             <tr>
@@ -73,7 +73,7 @@
 </ul>
 
 <% if (orders.length === 0) { %>
-  <div class="card p-5 text-center text-muted">Is tab mein koi order nahi hai.</div>
+  <div class="card p-5 text-center text-muted">There are no orders in this tab.</div>
 <% } else { %>
   <div class="card">
     <div class="table-responsive">
@@ -112,7 +112,7 @@
                 <%= o.paymentMethod === 'cod' ? 'COD' : 'Online' %>
                 <br><small class="text-muted"><%= o.paymentStatus %></small>
                 <% if (status === 'accepted' && o.paymentMethod === 'online' && o.paymentStatus !== 'paid') { %>
-                  <br><small class="text-danger">Payment verify hone tak pickup nahi hoga</small>
+                  <br><small class="text-danger">Pickup will not take place until the payment is verified.</small>
                 <% } %>
               </td>
                           <td>

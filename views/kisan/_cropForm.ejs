@@ -314,7 +314,7 @@
     const sel = document.createElement('select');
     sel.className = 'form-select form-select-sm';
     sel.style.width = 'auto';
-    const all = new Option('Poora India', '');
+    const all = new Option('All India', '');
     sel.add(all);
     STATES.forEach((s) => sel.add(new Option(s, s)));
     try { const s = localStorage.getItem('mandiState'); if (s) sel.value = s; } catch (e) { }
@@ -322,7 +322,7 @@
     const go = document.createElement('button');
     go.type = 'button';
     go.className = 'btn btn-sm btn-outline-success';
-    go.textContent = '📈 Aaj ka mandi bhav';
+    go.textContent = '📈 Today mandi price';
 
     const msg = document.createElement('div');
     msg.className = 'mt-1';
@@ -333,21 +333,21 @@
 
     go.addEventListener('click', async () => {
       const crop = nameEl.value.trim();
-      if (!crop) { msg.textContent = 'Pehle fasal ka naam likho (English mein, jaise Tomato).'; return; }
+      if (!crop) { msg.textContent = 'First, write the name of the crop (in English, e.g., tomato).'; return; }
       try { localStorage.setItem('mandiState', sel.value); } catch (e) { }
-      msg.textContent = 'Dhundh raha hoon...';
+      msg.textContent = 'Searching...';
       try {
         const r = await fetch('/mandi/api?' + new URLSearchParams({ commodity: crop, state: sel.value }));
         const d = await r.json();
         if (!r.ok) { msg.textContent = d.error || 'Error'; return; }
-        if (!d.found) { msg.textContent = 'Is naam ka bhav nahi mila. English naam try karo.'; return; }
+        if (!d.found) { msg.textContent = 'No meaning could be found for this name. Try an English name.'; return; }
 
         msg.textContent = d.commodity + ' (' + d.date + '): ₹' + d.summary.low + ' – ₹' + d.summary.high +
-          ' / kg, average ₹' + d.summary.avg + ' (' + d.summary.markets + ' mandi). Ye thok bhav hai.';
+          ' / kg, average ₹' + d.summary.avg + ' (' + d.summary.markets + ' mandi). These are wholesale prices..';
         const use = document.createElement('button');
         use.type = 'button';
         use.className = 'btn btn-sm btn-success ms-2';
-        use.textContent = 'Average rate lagao';
+        use.textContent = 'Apply the average rate.';
         use.addEventListener('click', () => { priceEl.value = d.summary.avg; });
         msg.appendChild(use);
       } catch (e) {
