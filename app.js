@@ -118,6 +118,7 @@ app.use('/kisan', require('./routes/kisan'));
 app.use('/customer', require('./routes/customer'));
 app.use('/buyer', require('./routes/buyer')('bulkbuyer'));
 app.use('/mandi', require('./routes/mandi'));
+app.use('/track', require('./routes/track'));
 
 // 404
 app.use((req, res) => {

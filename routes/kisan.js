@@ -18,14 +18,14 @@ const router = express.Router();
 router.use(isLoggedIn, allowRoles('kisan', 'bulkbuyer'));
 
 // ===== Chatbot (crop listing helper) =====
-const chatHits = new Map();   // user ke hisaab se rate limit (API ka kharcha bachane ke liye)
+const chatHits = new Map();   // rate limit per user (keeps the API cost low)
 
 router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
   const uid = req.session.user.id;
   const now = Date.now();
   const hits = (chatHits.get(uid) || []).filter((t) => now - t < 10 * 60 * 1000);
   if (hits.length >= 20) {
-    return res.status(429).json({ reply: 'Thodi der baad dobara try karo.', draft: null });
+    return res.status(429).json({ reply: 'Please try again in a few minutes.', draft: null });
   }
   hits.push(now);
   chatHits.set(uid, hits);
@@ -34,12 +34,12 @@ router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
     res.json(await chatCrop(req.body.messages, req.body.voice === true, req.body.lang, req.session.user.id));
   } catch (e) {
     console.error('chatbot:', e.message);
-    res.status(500).json({ reply: 'Abhi chatbot kaam nahi kar raha. Form se crop add kar lo.', draft: null });
+    res.status(500).json({ reply: 'The chatbot is not working right now. Please use the form to add your crop.', draft: null });
   }
 });
-const removeImage = (url) => {
-  removeByUrl(url);
-};
+
+// delete an old photo from Cloudinary (errors are ignored inside removeByUrl)
+const removeImage = (url) => removeByUrl(url);
 
 // kisan sirf apni hi crop edit/delete kar sake
 const loadOwnCrop = async (req, res, next) => {
@@ -71,8 +71,19 @@ router.post('/crops',
   uploadImage, cropRules, handleErrors('/kisan/crops/new'),
   async (req, res) => {
     const { name, category, price, quantity, bulkPrice, minBulkQty, harvestDate, location, lat, lng, description } = req.body;
+
+    // upload the photo to Cloudinary and keep its link
     let image;
-    if (req.file) image = await uploadBuffer(req.file, 'crop').secure_url;
+    if (req.file) {
+      try {
+        image = (await uploadBuffer(req.file, 'crops')).secure_url;
+      } catch (e) {
+        console.error('image upload:', e.message);
+        req.flash('error', 'Photo upload failed. Please try again.');
+        return res.redirect('/kisan/crops/new');
+      }
+    }
+
     await Crop.create({
       name, category, price, quantity, bulkPrice,
       sellerRole: req.session.user.role,
@@ -108,19 +119,24 @@ router.put('/crops/:id',
       lat: Number(lat), lng: Number(lng),
       minBulkQty: minBulkQty || crop.minBulkQty,
       harvestDate: harvestDate || undefined,
-      verified: 'pending',      // edit ke baad admin dobara verify karega
+      verified: 'pending',      // after an edit the admin verifies the crop again
       verifyNote: ''
     });
-    req.flash('success', 'Crop updated. It will be visible again after admin verification');
 
     if (req.file) {
-      const up = await uploadBuffer(req.file, 'crop');
-      await removeImage(crop.image);
-      crop.image = up.secure_url;
+      try {
+        const up = await uploadBuffer(req.file, 'crops');
+        await removeImage(crop.image);       // remove the old photo
+        crop.image = up.secure_url;
+      } catch (e) {
+        console.error('image upload:', e.message);
+        req.flash('error', 'Photo upload failed. Please try again.');
+        return res.redirect(`/kisan/crops/${req.params.id}/edit`);
+      }
     }
 
     await crop.save();
-    req.flash('success', 'Crop updated successfully');
+    req.flash('success', 'Crop updated. It will be visible again after admin verification');
     res.redirect('/kisan/dashboard');
   }
 );
@@ -143,11 +159,11 @@ router.get('/orders', async (req, res) => {
   res.render('kisan/orders', { title: 'Aaye hue orders', orders });
 });
 
-// Order ka status badlo (sirf sahi sequence mein)
+// Order status: the seller only accepts or rejects.
+// Pickup and delivery are done by the delivery partner.
 const transitions = {
   accept: { from: 'pending', to: 'accepted' },
   reject: { from: 'pending', to: 'rejected' },
-
 };
 
 router.patch('/orders/:id/:action', async (req, res) => {
@@ -166,6 +182,7 @@ router.patch('/orders/:id/:action', async (req, res) => {
 
     const filter = { _id: id, kisan: req.session.user.id, status: t.from };
 
+    // reject is allowed for a pending order, or an accepted order whose payment failed
     if (action === 'reject') {
       delete filter.status;
       filter.$or = [
@@ -173,26 +190,18 @@ router.patch('/orders/:id/:action', async (req, res) => {
         { status: 'accepted', paymentStatus: 'failed' }
       ];
     }
-    // online payment verify hone se pehle ship nahi ho sakta
-    if (action === 'ship') {
-      filter.$or = [{ paymentMethod: { $ne: 'online' } }, { paymentStatus: 'paid' }];
-    }
 
     order = await Order.findOneAndUpdate(filter, update);
   }
 
   if (!order) {
-    req.flash('error', 'this action is not possible,  (may be online payment verify )');
+    req.flash('error', 'This action is not possible right now');
     return res.redirect('/kisan/orders');
   }
 
+  // a rejected order gives its stock back
   if (t.to === 'rejected') {
     await Crop.updateOne({ _id: order.crop }, { $inc: { quantity: order.quantity } });
-  }
-
-  // COD: delivery par cash mil gaya
-  if (action === 'deliver' && order.paymentMethod !== 'online') {
-    await Order.updateOne({ _id: order._id }, { $set: { paymentStatus: 'paid', paidAt: new Date() } });
   }
 
   req.flash('success', `Order ${t.to} successfully`);
@@ -267,7 +276,3 @@ router.get('/insights', async (req, res) => {
 });
 
 module.exports = router;
-
-
-
-
