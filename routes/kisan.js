@@ -286,9 +286,12 @@ router.get('/insights', async (req, res) => {
   const names = [...new Set(crops.map((c) => c.name.trim().toLowerCase()))];
 
   const now = Date.now();
+  // Safe 8-week calculation (56 days) preventing NaN errors and Invalid Date casts
+  const eightWeeksAgo = new Date(now - (8 * 7 * 24 * 60 * 60 * 1000));
+
   const orders = await Order.find({
     status: { $ne: 'rejected' },
-    createdAt: { $gte: new Date(now - WEEKS * WEEK_MS) }
+    createdAt: { $gte: eightWeeksAgo }
   }).populate('crop', 'name');
 
   const insights = names.map((name) => {
