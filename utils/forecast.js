@@ -1,3 +1,6 @@
+// utils/forecast.js
+const MandiPrice = require("../models/MandiPrice");
+
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WEEKS = 8;
 
@@ -31,11 +34,7 @@ function forecast(series, horizon = 4) {
   return { predicted, slope: Math.round(slope * 10) / 10, trend };
 }
 
-module.exports = { buildSeries, forecast, WEEK_MS, WEEKS };
-
-// utils/forecast.js
-const MandiPrice = require("../models/MandiPrice");
-
+// Python FastAPI ML Demand & Mandi Price Predictor
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000";
 
 async function getMLDemandAndPriceForecast(cropName, cityName, days = 7) {
@@ -66,7 +65,7 @@ async function getMLDemandAndPriceForecast(cropName, cityName, days = 7) {
         current_mandi_price: latestMandiPriceQuintal,
         days: days,
       }),
-      signal: AbortSignal.timeout(3000), // 3-second timeout
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!response.ok) {
@@ -77,11 +76,10 @@ async function getMLDemandAndPriceForecast(cropName, cityName, days = 7) {
     return { ...mlData, source: "AI_MODEL" };
   } catch (err) {
     console.warn("ML Service unreachable, using local fallback forecast:", err.message);
-    // Fallback if Python server isn't running
     const baseKg = latestMandiPriceQuintal ? +(latestMandiPriceQuintal / 100).toFixed(2) : 24.0;
     return {
-      crop: cropName,
-      city: cityName,
+      crop: cropName || "Tomato",
+      city: cityName || "Kanpur",
       total7DayDemandKg: 5800,
       avgMandiPriceKg: baseKg,
       recommendedPriceKg: +(baseKg * 1.08).toFixed(2),
@@ -95,7 +93,11 @@ async function getMLDemandAndPriceForecast(cropName, cityName, days = 7) {
   }
 }
 
+// Single combined export at the very end!
 module.exports = {
+  buildSeries,
+  forecast,
+  WEEK_MS,
+  WEEKS,
   getMLDemandAndPriceForecast,
-  // Keep any existing exports you already have in utils/forecast.js below this line
 };
