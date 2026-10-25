@@ -32,3 +32,70 @@ function forecast(series, horizon = 4) {
 }
 
 module.exports = { buildSeries, forecast, WEEK_MS, WEEKS };
+
+// utils/forecast.js
+const MandiPrice = require("../models/MandiPrice");
+
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000";
+
+async function getMLDemandAndPriceForecast(cropName, cityName, days = 7) {
+  let latestMandiPriceQuintal = null;
+
+  try {
+    // 1. Check if we have a live synced price in models/MandiPrice.js
+    const mandiRecord = await MandiPrice.findOne({
+      crop: new RegExp(`^${cropName}$`, "i"),
+      city: new RegExp(`^${cityName}$`, "i"),
+    }).sort({ updatedAt: -1 });
+
+    if (mandiRecord && mandiRecord.modalPrice) {
+      latestMandiPriceQuintal = mandiRecord.modalPrice;
+    }
+  } catch (dbErr) {
+    console.warn("Could not query MandiPrice collection:", dbErr.message);
+  }
+
+  try {
+    // 2. Call our Python FastAPI ML service
+    const response = await fetch(`${ML_SERVICE_URL}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        crop: cropName || "Wheat",
+        city: cityName || "Kanpur",
+        current_mandi_price: latestMandiPriceQuintal,
+        days: days,
+      }),
+      signal: AbortSignal.timeout(3000), // 3-second timeout
+    });
+
+    if (!response.ok) {
+      throw new Error(`ML service responded with status ${response.status}`);
+    }
+
+    const mlData = await response.json();
+    return { ...mlData, source: "AI_MODEL" };
+  } catch (err) {
+    console.warn("ML Service unreachable, using local fallback forecast:", err.message);
+    // Fallback if Python server isn't running
+    const baseKg = latestMandiPriceQuintal ? +(latestMandiPriceQuintal / 100).toFixed(2) : 24.0;
+    return {
+      crop: cropName,
+      city: cityName,
+      total7DayDemandKg: 5800,
+      avgMandiPriceKg: baseKg,
+      recommendedPriceKg: +(baseKg * 1.08).toFixed(2),
+      recommendedMinKg: +(baseKg * 1.03).toFixed(2),
+      recommendedMaxKg: +(baseKg * 1.14).toFixed(2),
+      trend: "UP",
+      advice: `Estimated 7-day demand is 5,800 kg. Recommended direct marketplace price is ₹${(baseKg * 1.08).toFixed(2)}/kg.`,
+      dailyForecasts: [],
+      source: "FALLBACK",
+    };
+  }
+}
+
+module.exports = {
+  getMLDemandAndPriceForecast,
+  // Keep any existing exports you already have in utils/forecast.js below this line
+};

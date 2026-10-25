@@ -9,7 +9,7 @@ const { cropRules, handleErrors } = require('../middleware/validators');
 const { uploadBuffer, removeByUrl } = require('../utils/cloudinary');
 const { CITY_NAMES } = require('../utils/cities');
 const { planRoute } = require('../utils/geo');
-const { buildSeries, forecast, WEEK_MS, WEEKS } = require('../utils/forecast');
+const { buildSeries, forecast, WEEK_MS, WEEKS, getMLDemandAndPriceForecast } = require('../utils/forecast');
 
 const { chatCrop } = require('../utils/cropChat');
 const router = express.Router();
@@ -268,6 +268,60 @@ router.get('/insights', async (req, res) => {
 
 module.exports = router;
 
+// 1. Live AI price & demand endpoint for _cropForm.ejs
+router.get('/api/price-suggest', async (req, res) => {
+  try {
+    const crop = req.query.crop || 'Wheat';
+    const city = req.query.city || 'Kanpur';
+    const prediction = await getMLDemandAndPriceForecast(crop, city, 7);
+    res.json({ success: true, data: prediction });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
+// 2. Insights: demand forecast + ML 7-day forecast
+router.get('/insights', async (req, res) => {
+  const crops = await Crop.find({ kisan: req.session.user.id });
+  const names = [...new Set(crops.map((c) => c.name.trim().toLowerCase()))];
 
+  const now = Date.now();
+  const orders = await Order.find({
+    status: { $ne: 'rejected' },
+    createdAt: { $gte: new Date(now - WEEKS * WEEK_MS) }
+  }).populate('crop', 'name');
 
+  const insights = names.map((name) => {
+    const series = buildSeries(
+      orders.filter((o) => o.crop && o.crop.name.trim().toLowerCase() === name), now
+    );
+    const f = forecast(series);
+    const stock = crops
+      .filter((c) => c.name.trim().toLowerCase() === name)
+      .reduce((sum, c) => sum + c.quantity, 0);
+
+    const avg = f.predicted.reduce((a, b) => a + b, 0) / f.predicted.length;
+    let advice = 'Stock is adequate.';
+    if (series.every((v) => v === 0)) advice = 'No order data available yet, forecast will be visible later.';
+    else if (stock < avg) advice = 'Upcoming week\'s demand exceeds stock, consider listing more stock.';
+    else if (stock > avg * 3) advice = 'Stock significantly exceeds demand, consider lowering the price for faster sales.';
+
+    return { name, series, stock, advice, ...f };
+  });
+
+  // Fetch ML 7-day forecast (defaults to farmer's first listed crop, or Tomato)
+  const selectedCrop = req.query.crop || (names[0] ? names[0] : 'Tomato');
+  const selectedCity = req.query.city || 'Kanpur';
+  const mlForecast = await getMLDemandAndPriceForecast(selectedCrop, selectedCity, 7);
+
+  res.render('kisan/insights', {
+    title: 'Demand insights',
+    insights,
+    mlForecast,
+    selectedCrop,
+    selectedCity,
+    cities: CITY_NAMES
+  });
+});
+
+module.exports = router;
