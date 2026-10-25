@@ -1,3 +1,4 @@
+// routes/kisan.js
 const express = require('express');
 const mongoose = require('mongoose');
 const Crop = require('../models/Crop');
@@ -8,24 +9,48 @@ const { cropRules, handleErrors } = require('../middleware/validators');
 
 const { uploadBuffer, removeByUrl } = require('../utils/cloudinary');
 const { CITY_NAMES } = require('../utils/cities');
-const { planRoute } = require('../utils/geo');
-const { buildSeries, forecast, WEEK_MS, WEEKS } = require('../utils/forecast');
+const { planRoute, planRouteML, findClosestFarmersML } = require('../utils/geo');
+const { buildSeries, forecast, getMLDemandAndPriceForecast } = require('../utils/forecast');
 
 const { chatCrop } = require('../utils/cropChat');
 const router = express.Router();
 
+// API: Find closest farmers to buy from (accessible to all logged-in buyers, bulk buyers & kisans)
+router.get('/api/closest-farmers', isLoggedIn, async (req, res) => {
+  try {
+    const buyerLat = parseFloat(req.query.lat) || 26.4499;
+    const buyerLng = parseFloat(req.query.lng) || 80.3319;
+    const cropFilter = req.query.crop || '';
+    const requiredQtyKg = req.query.qty ? parseFloat(req.query.qty) : null;
+    const isBulkBuyer = req.session.user && req.session.user.role === 'bulkbuyer';
+
+    const crops = await Crop.find({ quantity: { $gt: 0 } }).populate('kisan', 'name phone');
+    const result = await findClosestFarmersML({
+      buyerLat,
+      buyerLng,
+      cropFilter,
+      requiredQtyKg,
+      isBulkBuyer,
+      crops
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 // is router ke saare routes sirf logged-in kisan ke liye
 router.use(isLoggedIn, allowRoles('kisan', 'bulkbuyer'));
 
 // ===== Chatbot (crop listing helper) =====
-const chatHits = new Map();   // rate limit per user (keeps the API cost low)
+const chatHits = new Map();
 
 router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
   const uid = req.session.user.id;
   const now = Date.now();
   const hits = (chatHits.get(uid) || []).filter((t) => now - t < 10 * 60 * 1000);
   if (hits.length >= 20) {
-    return res.status(429).json({ reply: 'Please try again in a few minutes.', draft: null });
+    return res.status(429).json({ reply: 'Thodi der baad dobara try karo.', draft: null });
   }
   hits.push(now);
   chatHits.set(uid, hits);
@@ -34,12 +59,13 @@ router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
     res.json(await chatCrop(req.body.messages, req.body.voice === true, req.body.lang, req.session.user.id));
   } catch (e) {
     console.error('chatbot:', e.message);
-    res.status(500).json({ reply: 'The chatbot is not working right now. Please use the form to add your crop.', draft: null });
+    res.status(500).json({ reply: 'Abhi chatbot kaam nahi kar raha. Form se crop add kar lo.', draft: null });
   }
 });
 
-// delete an old photo from Cloudinary (errors are ignored inside removeByUrl)
-const removeImage = (url) => removeByUrl(url);
+const removeImage = (url) => {
+  removeByUrl(url);
+};
 
 // kisan sirf apni hi crop edit/delete kar sake
 const loadOwnCrop = async (req, res, next) => {
@@ -71,24 +97,12 @@ router.post('/crops',
   uploadImage, cropRules, handleErrors('/kisan/crops/new'),
   async (req, res) => {
     const { name, category, price, quantity, bulkPrice, minBulkQty, harvestDate, location, lat, lng, description } = req.body;
-
-    // upload the photo to Cloudinary and keep its link
     let image;
-    if (req.file) {
-      try {
-        image = (await uploadBuffer(req.file, 'crops')).secure_url;
-      } catch (e) {
-        console.error('image upload:', e.message);
-        req.flash('error', 'Photo upload failed. Please try again.');
-        return res.redirect('/kisan/crops/new');
-      }
-    }
-
+    if (req.file) image = (await uploadBuffer(req.file, 'crop')).secure_url;
     await Crop.create({
       name, category, price, quantity, bulkPrice,
       sellerRole: req.session.user.role,
       location, description,
-
       lat: Number(lat), lng: Number(lng),
       minBulkQty: minBulkQty || undefined,
       harvestDate: harvestDate || undefined,
@@ -119,24 +133,19 @@ router.put('/crops/:id',
       lat: Number(lat), lng: Number(lng),
       minBulkQty: minBulkQty || crop.minBulkQty,
       harvestDate: harvestDate || undefined,
-      verified: 'pending',      // after an edit the admin verifies the crop again
+      verified: 'pending',
       verifyNote: ''
     });
+    req.flash('success', 'Crop updated. It will be visible again after admin verification');
 
     if (req.file) {
-      try {
-        const up = await uploadBuffer(req.file, 'crops');
-        await removeImage(crop.image);       // remove the old photo
-        crop.image = up.secure_url;
-      } catch (e) {
-        console.error('image upload:', e.message);
-        req.flash('error', 'Photo upload failed. Please try again.');
-        return res.redirect(`/kisan/crops/${req.params.id}/edit`);
-      }
+      const up = await uploadBuffer(req.file, 'crop');
+      await removeImage(crop.image);
+      crop.image = up.secure_url;
     }
 
     await crop.save();
-    req.flash('success', 'Crop updated. It will be visible again after admin verification');
+    req.flash('success', 'Crop updated successfully');
     res.redirect('/kisan/dashboard');
   }
 );
@@ -159,8 +168,7 @@ router.get('/orders', async (req, res) => {
   res.render('kisan/orders', { title: 'Aaye hue orders', orders });
 });
 
-// Order status: the seller only accepts or rejects.
-// Pickup and delivery are done by the delivery partner.
+// Order ka status badlo
 const transitions = {
   accept: { from: 'pending', to: 'accepted' },
   reject: { from: 'pending', to: 'rejected' },
@@ -182,7 +190,6 @@ router.patch('/orders/:id/:action', async (req, res) => {
 
     const filter = { _id: id, kisan: req.session.user.id, status: t.from };
 
-    // reject is allowed for a pending order, or an accepted order whose payment failed
     if (action === 'reject') {
       delete filter.status;
       filter.$or = [
@@ -190,18 +197,24 @@ router.patch('/orders/:id/:action', async (req, res) => {
         { status: 'accepted', paymentStatus: 'failed' }
       ];
     }
+    if (action === 'ship') {
+      filter.$or = [{ paymentMethod: { $ne: 'online' } }, { paymentStatus: 'paid' }];
+    }
 
     order = await Order.findOneAndUpdate(filter, update);
   }
 
   if (!order) {
-    req.flash('error', 'This action is not possible right now');
+    req.flash('error', 'this action is not possible, (may be online payment verify)');
     return res.redirect('/kisan/orders');
   }
 
-  // a rejected order gives its stock back
   if (t.to === 'rejected') {
     await Crop.updateOne({ _id: order.crop }, { $inc: { quantity: order.quantity } });
+  }
+
+  if (action === 'deliver' && order.paymentMethod !== 'online') {
+    await Order.updateOne({ _id: order._id }, { $set: { paymentStatus: 'paid', paidAt: new Date() } });
   }
 
   req.flash('success', `Order ${t.to} successfully`);
@@ -228,30 +241,50 @@ router.patch('/orders/:id/payment/:decision', async (req, res) => {
   res.redirect('/kisan/orders');
 });
 
-// Delivery plan: accepted orders ka optimized route
+
+// Delivery plan: accepted orders ka optimized route + ML perishability route
 router.get('/delivery-plan', async (req, res) => {
   const pickup = CITY_NAMES.includes(req.query.pickup) ? req.query.pickup : 'Kanpur';
 
   const orders = await Order.find({ kisan: req.session.user.id, status: 'accepted' })
-    .populate('crop', 'name')
+    .populate('crop', 'name category')
     .populate('buyer', 'name phone')
     .sort({ createdAt: 1 });
 
+  const mlRoute = await planRouteML(pickup, orders);
+
   res.render('kisan/delivery', {
-    title: 'Delivery plan', pickup, cities: CITY_NAMES,
-    orderCount: orders.length, plan: planRoute(pickup, orders)
+    title: 'Delivery plan',
+    pickup,
+    cities: CITY_NAMES,
+    orderCount: orders.length,
+    plan: planRoute(pickup, orders),
+    mlRoute
   });
 });
+// 1. Live AI price & demand endpoint for _cropForm.ejs
+router.get('/api/price-suggest', async (req, res) => {
+  try {
+    const crop = req.query.crop || 'Wheat';
+    const city = req.query.city || 'Kanpur';
+    const prediction = await getMLDemandAndPriceForecast(crop, city, 7);
+    res.json({ success: true, data: prediction });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
-// Insights: demand forecast
+// 2. Insights: demand forecast + ML 7-day forecast
 router.get('/insights', async (req, res) => {
   const crops = await Crop.find({ kisan: req.session.user.id });
   const names = [...new Set(crops.map((c) => c.name.trim().toLowerCase()))];
 
   const now = Date.now();
+  const eightWeeksAgo = new Date(now - (56 * 24 * 60 * 60 * 1000));
+
   const orders = await Order.find({
     status: { $ne: 'rejected' },
-    createdAt: { $gte: new Date(now - WEEKS * WEEK_MS) }
+    createdAt: { $gte: eightWeeksAgo }
   }).populate('crop', 'name');
 
   const insights = names.map((name) => {
@@ -272,7 +305,18 @@ router.get('/insights', async (req, res) => {
     return { name, series, stock, advice, ...f };
   });
 
-  res.render('kisan/insights', { title: 'Demand insights', insights });
+  const selectedCrop = req.query.crop || (names[0] ? names[0] : 'Tomato');
+  const selectedCity = req.query.city || 'Kanpur';
+  const mlForecast = await getMLDemandAndPriceForecast(selectedCrop, selectedCity, 7);
+
+  res.render('kisan/insights', {
+    title: 'Demand insights',
+    insights,
+    mlForecast,
+    selectedCrop,
+    selectedCity,
+    cities: CITY_NAMES
+  });
 });
 
 module.exports = router;

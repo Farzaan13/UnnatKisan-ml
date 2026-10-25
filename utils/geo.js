@@ -100,4 +100,87 @@ function planRoute(pickup, orders) {
   };
 }
 
-module.exports = { planRoute, roadKmToCity };
+
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
+
+// 1. Calls Python ML Service to rank closest farmers & build Virtual FPO pools for buyers
+async function findClosestFarmersML({ buyerLat, buyerLng, cropFilter, requiredQtyKg, isBulkBuyer, crops }) {
+  const listings = (crops || []).map((c) => {
+    const harvestDays = c.harvestDate
+      ? Math.max(0, Math.floor((Date.now() - new Date(c.harvestDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1;
+    return {
+      cropId: String(c._id),
+      cropName: c.name || 'Crop',
+      category: c.category || 'vegetable',
+      kisanName: (c.kisan && c.kisan.name) ? c.kisan.name : 'Verified Kisan',
+      location: c.location || 'Kanpur',
+      lat: c.lat || null,
+      lng: c.lng || null,
+      price: Number(c.price) || 20,
+      bulkPrice: c.bulkPrice ? Number(c.bulkPrice) : null,
+      quantity: Number(c.quantity) || 0,
+      daysSinceHarvest: harvestDays
+    };
+  });
+
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/find-closest-farmers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        buyerLat: Number(buyerLat) || 26.4499,
+        buyerLng: Number(buyerLng) || 80.3319,
+        cropFilter: cropFilter || null,
+        requiredQtyKg: requiredQtyKg ? Number(requiredQtyKg) : null,
+        isBulkBuyer: Boolean(isBulkBuyer),
+        listings
+      }),
+      signal: AbortSignal.timeout(3500)
+    });
+    if (!res.ok) throw new Error('ML service error');
+    return await res.json();
+  } catch (err) {
+    console.warn('Closest-farmer ML fallback:', err.message);
+    return { totalMatches: 0, closestFarmer: null, farmers: [], fpoPool: null };
+  }
+}
+
+// 2. Calls Python ML Service for perishability-aware multi-stop route optimization
+async function planRouteML(pickupCity, orders) {
+  const stops = (orders || []).map((o) => ({
+    orderId: String(o._id),
+    buyerName: (o.buyer && o.buyer.name) ? o.buyer.name : 'Buyer',
+    cropName: (o.crop && o.crop.name) ? o.crop.name : 'Crop',
+    category: (o.crop && o.crop.category) ? o.crop.category : 'vegetable',
+    quantityKg: Number(o.quantity) || 50,
+    city: o.deliveryAddress || o.city || 'Lucknow',
+    lat: o.lat || null,
+    lng: o.lng || null
+  }));
+
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/optimize-route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pickupCity: pickupCity || 'Kanpur',
+        stops
+      }),
+      signal: AbortSignal.timeout(3500)
+    });
+    if (!res.ok) throw new Error('ML route error');
+    return await res.json();
+  } catch (err) {
+    console.warn('Route ML fallback:', err.message);
+    return null;
+  }
+}
+
+// Single combined export at the very end of utils/geo.js
+module.exports = {
+  planRoute,
+  findClosestFarmersML,
+  roadKmToCity,
+  planRouteML
+};

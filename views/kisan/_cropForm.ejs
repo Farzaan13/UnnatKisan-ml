@@ -240,7 +240,7 @@
 
 <script>
   (function () {
-    const MIN = <% - JSON.stringify(currentUser && currentUser.role === 'bulkbuyer' ? {} : CUSTOMER_MIN_QTY) %>;
+    const MIN = JSON.parse('<%- JSON.stringify(currentUser && currentUser.role === "bulkbuyer" ? {} : CUSTOMER_MIN_QTY) %>');
     const cat = document.getElementById('category');
     const qty = document.getElementById('quantity');
     const hint = document.getElementById('minHint');
@@ -354,5 +354,95 @@
         msg.textContent = 'Network error.';
       }
     });
+  })();
+</script>
+
+<script>
+  // 🤖 AI Demand & Dynamic Price Advisor (auto-attaches below Customer Price)
+  (function () {
+    const nameEl = document.getElementById('name');
+    const locEl = document.getElementById('location');
+    const priceEl = document.getElementById('price');
+    const bulkPriceEl = document.getElementById('bulkPrice');
+    if (!nameEl || !priceEl) return;
+
+    // Create the AI box right below the price input
+    const aiBox = document.createElement('div');
+    aiBox.className = 'mt-2 p-2 border rounded small';
+    aiBox.style.backgroundColor = '#f0fdf4';
+    aiBox.style.borderColor = '#86efac';
+    aiBox.style.display = 'none';
+
+    const title = document.createElement('div');
+    title.className = 'fw-bold text-success';
+    title.textContent = '🤖 AI Demand & Price Predictor';
+
+    const info = document.createElement('div');
+    info.className = 'mt-1 text-dark';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'btn btn-sm btn-success mt-2 d-none';
+
+    aiBox.append(title, info, applyBtn);
+    priceEl.parentElement.appendChild(aiBox);
+
+    let timer;
+    async function fetchAIPrediction() {
+      const crop = nameEl.value.trim();
+      if (crop.length < 2) {
+        aiBox.style.display = 'none';
+        return;
+      }
+
+      // Extract city name from location field (or default to Kanpur)
+      const rawLoc = locEl && locEl.value ? locEl.value.split(',')[0].trim() : 'Kanpur';
+      const city = rawLoc || 'Kanpur';
+
+      aiBox.style.display = 'block';
+      info.textContent = 'AI model se 7-din ki demand aur sahi bhav nikaal rahe hain...';
+      applyBtn.classList.add('d-none');
+
+      try {
+        const res = await fetch('/kisan/api/price-suggest?' + new URLSearchParams({ crop, city }));
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          info.textContent = 'AI suggestion abhi uplabdh nahi hai.';
+          return;
+        }
+
+        const d = json.data;
+        const retailRate = d.recommendedPriceKg;
+        const bulkRate = d.recommendedMinKg; // Slightly lower ideal rate for bulk buyers
+
+        info.innerHTML =
+          '📊 <strong>7-Day City Demand (' + d.city + '):</strong> ' + d.total7DayDemandKg + ' kg (' + d.trend + ')<br>' +
+          '💰 <strong>AI Retail Rate:</strong> ₹' + retailRate + '/kg &nbsp;|&nbsp; ' +
+          '📦 <strong>AI Bulk Rate:</strong> ₹' + bulkRate + '/kg';
+
+        applyBtn.textContent = '✓ Apply AI Rates (Retail ₹' + retailRate + ' / Bulk ₹' + bulkRate + ')';
+        applyBtn.classList.remove('d-none');
+        applyBtn.onclick = () => {
+          priceEl.value = retailRate;
+          if (bulkPriceEl) bulkPriceEl.value = bulkRate;
+        };
+      } catch (e) {
+        info.textContent = 'AI service connect nahi ho paayi.';
+      }
+    }
+
+    // Trigger automatically when farmer types crop name or changes location
+    nameEl.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(fetchAIPrediction, 500);
+    });
+    if (locEl) {
+      locEl.addEventListener('change', fetchAIPrediction);
+    }
+
+    // If editing an existing crop, run immediately
+    if (nameEl.value.trim()) {
+      fetchAIPrediction();
+    }
   })();
 </script>

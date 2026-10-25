@@ -4,8 +4,125 @@
   <h3 class="mb-0"><i class="fa-solid fa-chart-line text-success"></i> Demand insights</h3>
   <a href="/kisan/dashboard" class="btn btn-outline-success">Dashboard</a>
 </div>
+
+<!-- 🤖 AI 7-Day Demand & Dynamic Mandi Price Predictor Section -->
+<% if (typeof mlForecast !== 'undefined' && mlForecast) { %>
+  <div class="card border-success shadow-sm mb-4">
+    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <i class="fa-solid fa-robot me-1"></i>
+        <strong>AI 7-Day Demand & Dynamic Mandi Price Forecast</strong>
+      </div>
+      <span class="badge bg-light text-success">
+        <%= mlForecast.source === 'AI_MODEL' ? 'Live ML Model Active' : 'Smart Baseline Active' %>
+      </span>
+    </div>
+
+    <div class="card-body">
+      <!-- Filter Form to check any Crop & City -->
+      <form action="/kisan/insights" method="GET" class="row g-2 align-items-end mb-3">
+        <div class="col-sm-5 col-md-4">
+          <label class="form-label small text-muted mb-1">Crop Name</label>
+          <input
+            type="text"
+            name="crop"
+            class="form-control form-control-sm"
+            value="<%= typeof selectedCrop !== 'undefined' ? selectedCrop : mlForecast.crop %>"
+            placeholder="e.g. Tomato, Wheat, Potato, Onion"
+            required
+          >
+        </div>
+        <div class="col-sm-5 col-md-4">
+          <label class="form-label small text-muted mb-1">Target City / Mandi</label>
+          <% const cityList = (typeof cities !== 'undefined' && cities && cities.length) ? cities : ['Kanpur', 'Lucknow', 'Varanasi', 'Agra', 'Prayagraj', 'Meerut', 'Noida', 'Gorakhpur']; %>
+          <select name="city" class="form-select form-select-sm">
+            <% cityList.forEach(c => { %>
+              <option value="<%= c %>" <%= (typeof selectedCity !== 'undefined' && selectedCity === c) ? 'selected' : '' %>><%= c %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-sm-2 col-md-4">
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="fa-solid fa-magnifying-glass-chart"></i> Predict
+          </button>
+        </div>
+      </form>
+
+      <!-- Key AI Metrics Row -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-3 col-6">
+          <div class="p-3 border rounded bg-light h-100">
+            <div class="small text-muted">7-Day Projected Demand</div>
+            <div class="fs-5 fw-bold text-dark"><%= mlForecast.total7DayDemandKg %> kg</div>
+            <span class="badge text-bg-<%= mlForecast.trend === 'UP' ? 'success' : 'secondary' %> mt-1">
+              Trend: <%= mlForecast.trend %>
+            </span>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-6">
+          <div class="p-3 border rounded bg-light h-100">
+            <div class="small text-muted">Predicted Mandi Wholesale</div>
+            <div class="fs-5 fw-bold text-secondary">₹<%= mlForecast.avgMandiPriceKg %> / kg</div>
+            <div class="small text-muted">Modal wholesale avg</div>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-6">
+          <div class="p-3 border rounded bg-light h-100" style="border-color: #86efac !important; background-color: #f0fdf4 !important;">
+            <div class="small text-success fw-semibold">AI Recommended Retail Price</div>
+            <div class="fs-5 fw-bold text-success">₹<%= mlForecast.recommendedPriceKg %> / kg</div>
+            <div class="small text-muted">Ideal band: ₹<%= mlForecast.recommendedMinKg %>–₹<%= mlForecast.recommendedMaxKg %></div>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-6">
+          <div class="p-3 border rounded bg-light h-100">
+            <div class="small text-primary fw-semibold">AI Recommended Bulk Price</div>
+            <div class="fs-5 fw-bold text-primary">₹<%= mlForecast.recommendedMinKg %> / kg</div>
+            <div class="small text-muted">Best rate for FPO / Bulk orders</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert alert-success py-2 mb-3">
+        <i class="fa-solid fa-lightbulb me-1"></i>
+        <strong>AI Pricing Advice:</strong> <%= mlForecast.advice %>
+      </div>
+
+      <!-- 7-Day Daily Breakdown Table -->
+      <% if (mlForecast.dailyForecasts && mlForecast.dailyForecasts.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Day & Date</th>
+                <th>Predicted City Demand (kg)</th>
+                <th>Predicted Mandi Rate (₹ / Quintal)</th>
+                <th>Predicted Wholesale Rate (₹ / kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% mlForecast.dailyForecasts.forEach(day => { %>
+                <tr>
+                  <td><strong><%= day.dayName %></strong>, <%= day.date %></td>
+                  <td><span class="badge text-bg-light border text-dark"><%= day.predictedDemandKg %> kg</span></td>
+                  <td>₹<%= day.predictedMandiPriceQuintal %> / quintal</td>
+                  <td class="fw-semibold text-success">₹<%= day.predictedMandiPriceKg %> / kg</td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+  </div>
+<% } %>
+
+<!-- Existing 4-Week Historical Order Insights Section -->
+<h5 class="mb-1">Your Listed Crops: 4-Week Order Forecast</h5>
 <p class="text-muted">
- Demand for the next 4 weeks based on orders from the past 8 weeks. W0 = the last 7 days.
+  Demand for the next 4 weeks based on orders from the past 8 weeks. W0 = the last 7 days.
 </p>
 
 <% if (insights.length === 0) { %>
