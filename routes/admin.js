@@ -11,19 +11,46 @@ router.use(isLoggedIn, allowRoles('admin'));
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const str = (v) => (typeof v === 'string' ? v : '');
 
+// ================= DASHBOARD =================
 router.get('/dashboard', async (req, res) => {
-  const [users, blocked, pendingCrops, orders] = await Promise.all([
+  const [
+    users, blocked, pendingCrops, orders,
+    needPartner, failed, onTheWay, partners,
+    roleRows, recentOrders
+  ] = await Promise.all([
     User.countDocuments({ role: { $ne: 'admin' } }),
     User.countDocuments({ isBlocked: true }),
     Crop.countDocuments({ verified: 'pending' }),
-    Order.countDocuments()
+    Order.countDocuments(),
+
+    // admin-managed deliveries (farmer -> customer orders)
+    Order.countDocuments({ deliveryBy: 'admin', status: 'accepted', deliveryPartner: null }),
+    Order.countDocuments({ deliveryBy: 'admin', status: 'shipped', 'deliveryIssue.reason': { $exists: true } }),
+    Order.countDocuments({ deliveryBy: 'admin', status: 'shipped' }),
+    User.countDocuments({ role: 'delivery', managedByRole: 'admin', isBlocked: { $ne: true } }),
+
+    User.aggregate([{ $group: { _id: '$role', n: { $sum: 1 } } }]),
+    Order.find()
+      .populate('crop', 'name')
+      .populate('buyer', 'name')
+      .sort({ createdAt: -1 })
+      .limit(5)
   ]);
-  res.render('admin/dashboard', { title: 'Admin', stats: { users, blocked, pendingCrops, orders } });
+
+  const roles = { kisan: 0, bulkbuyer: 0, customer: 0, delivery: 0 };
+  roleRows.forEach((r) => { if (r._id in roles) roles[r._id] = r.n; });
+
+  res.render('admin/dashboard', {
+    title: 'Admin Dashboard',
+    stats: { users, blocked, pendingCrops, orders, needPartner, failed, onTheWay, partners },
+    roles,
+    recentOrders
+  });
 });
 
 // Saare users, role aur search se filter
 router.get('/users', async (req, res) => {
-  const role = ['kisan', 'bulkbuyer', 'customer'].includes(req.query.role) ? req.query.role : '';
+ const role = ['kisan', 'bulkbuyer', 'customer', 'delivery'].includes(req.query.role) ? req.query.role : '';
   const q = str(req.query.q).trim();
   const filter = { role: role || { $ne: 'admin' } };
   if (q) {

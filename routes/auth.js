@@ -10,6 +10,7 @@ const homeByRole = {
   kisan: '/kisan/dashboard',
   customer: '/customer/dashboard',
   bulkbuyer: '/buyer/dashboard',
+  delivery: '/delivery/dashboard',
 };
 
 // login aur signup dono yahi use karte hain: naya session banao, user save karo, dashboard bhejo

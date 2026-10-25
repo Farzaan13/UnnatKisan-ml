@@ -2,6 +2,30 @@
 
 <h3 class="mb-4">Admin Dashboard 🛡️</h3>
 
+<!-- ================= NEEDS ATTENTION ================= -->
+<% const attention = []; %>
+<% if (stats.pendingCrops > 0) attention.push({ text: stats.pendingCrops + ' crop(s) waiting for verification', href: '/admin/crops', cls: 'warning' }); %>
+<% if (stats.needPartner > 0) attention.push({ text: stats.needPartner + ' order(s) need a delivery partner', href: '/admin/delivery?status=accepted', cls: 'warning' }); %>
+<% if (stats.failed > 0) attention.push({ text: stats.failed + ' failed delivery(ies) need a decision', href: '/admin/delivery?status=shipped', cls: 'danger' }); %>
+
+<% if (attention.length) { %>
+  <div class="card mb-4 border-warning">
+    <div class="card-header bg-white"><strong>⚠ Needs your attention</strong></div>
+    <ul class="list-group list-group-flush">
+      <% attention.forEach(a => { %>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span class="text-<%= a.cls %>"><%= a.text %></span>
+          <a href="<%= a.href %>" class="btn btn-sm btn-outline-<%= a.cls %>">Open</a>
+        </li>
+      <% }) %>
+    </ul>
+  </div>
+<% } else { %>
+  <div class="alert alert-success mb-4">✅ Nothing is waiting for you right now.</div>
+<% } %>
+
+<!-- ================= PLATFORM ================= -->
+<h6 class="text-muted text-uppercase mb-2">Platform</h6>
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="card p-3 text-center">
@@ -29,11 +53,106 @@
   </div>
 </div>
 
-<div class="d-flex gap-2">
+<!-- ================= USERS BY ROLE ================= -->
+<h6 class="text-muted text-uppercase mb-2">Users by role</h6>
+<div class="row g-3 mb-4">
+  <% [['kisan', 'Farmers'], ['bulkbuyer', 'Bulk buyers'], ['customer', 'Customers'], ['delivery', 'Delivery partners']].forEach(([key, label]) => { %>
+    <div class="col-6 col-md-3">
+      <a href="/admin/users?role=<%= key %>" class="text-decoration-none">
+        <div class="card p-3 text-center">
+          <div class="fs-4 fw-semibold text-dark"><%= roles[key] %></div>
+          <small class="text-muted"><%= label %></small>
+        </div>
+      </a>
+    </div>
+  <% }) %>
+</div>
+
+<!-- ================= DELIVERIES (managed by admin) ================= -->
+<h6 class="text-muted text-uppercase mb-2">Deliveries managed by admin (farmer → customer)</h6>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <a href="/admin/delivery?status=accepted" class="text-decoration-none">
+      <div class="card p-3 text-center">
+        <div class="fs-3 fw-semibold text-warning"><%= stats.needPartner %></div>
+        <small class="text-muted">Need a partner</small>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/admin/delivery?status=shipped" class="text-decoration-none">
+      <div class="card p-3 text-center">
+        <div class="fs-3 fw-semibold text-primary"><%= stats.onTheWay %></div>
+        <small class="text-muted">On the way</small>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/admin/delivery?status=shipped" class="text-decoration-none">
+      <div class="card p-3 text-center">
+        <div class="fs-3 fw-semibold text-danger"><%= stats.failed %></div>
+        <small class="text-muted">Failed deliveries</small>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/admin/delivery" class="text-decoration-none">
+      <div class="card p-3 text-center">
+        <div class="fs-3 fw-semibold text-success"><%= stats.partners %></div>
+        <small class="text-muted">Active partners</small>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- ================= QUICK ACTIONS ================= -->
+<div class="d-flex flex-wrap gap-2 mb-4">
   <a href="/admin/crops" class="btn btn-primary">
     <i class="fa-solid fa-circle-check"></i> Verify crops
+    <% if (stats.pendingCrops > 0) { %><span class="badge text-bg-light"><%= stats.pendingCrops %></span><% } %>
   </a>
   <a href="/admin/users" class="btn btn-outline-success">
     <i class="fa-solid fa-users"></i> Manage users
   </a>
+  <a href="/admin/delivery" class="btn btn-outline-primary">
+    <i class="fa-solid fa-truck"></i> Deliveries
+    <% if (stats.needPartner + stats.failed > 0) { %><span class="badge text-bg-danger"><%= stats.needPartner + stats.failed %></span><% } %>
+  </a>
 </div>
+
+<!-- ================= RECENT ORDERS ================= -->
+<h6 class="text-muted text-uppercase mb-2">Latest orders</h6>
+<% if (recentOrders.length === 0) { %>
+  <div class="card p-4 text-center text-muted">No orders yet.</div>
+<% } else { %>
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Crop</th>
+            <th>Buyer</th>
+            <th>Type</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% recentOrders.forEach(o => { %>
+            <tr>
+              <td><small class="text-muted"><%= o.trackingId || '-' %></small></td>
+              <td><%= o.crop ? o.crop.name : 'Removed' %> · <%= o.quantity %> kg</td>
+              <td><%= o.buyer ? o.buyer.name : '-' %></td>
+              <td><span class="badge text-bg-<%= o.orderType === 'bulk' ? 'dark' : 'secondary' %>"><%= o.orderType %></span></td>
+              <td>₹<%= o.totalPrice %></td>
+              <td><%- include('../partials/statusBadge', { status: o.status }) %></td>
+              <td><small class="text-muted"><%= o.createdAt.toLocaleDateString('en-IN') %></small></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% } %>

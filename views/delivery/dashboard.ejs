@@ -1,0 +1,173 @@
+<% layout('/layouts/boilerplate') %>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Hello, <%= currentUser.name %> 🚚</h3>
+</div>
+
+<ul class="nav nav-pills mb-3">
+  <li class="nav-item"><a class="nav-link <%= tab === 'active' ? 'active' : '' %>" href="/delivery/dashboard">My deliveries</a></li>
+  <li class="nav-item"><a class="nav-link <%= tab === 'done' ? 'active' : '' %>" href="/delivery/dashboard?tab=done">Completed</a></li>
+</ul>
+
+<% const onTheWay = orders.some(o => o.status === 'shipped'); %>
+
+<% if (tab === 'active' && onTheWay) { %>
+  <div class="card p-3 mb-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="shareLoc">
+      <label class="form-check-label" for="shareLoc"><strong>Share my live location</strong> with the buyer and my manager</label>
+    </div>
+    <small class="text-muted" id="shareStatus">Location sharing is off. Keep this page open while sharing.</small>
+  </div>
+<% } %>
+
+<% if (orders.length === 0) { %>
+  <div class="card p-5 text-center text-muted">
+    <%= tab === 'done' ? 'No completed deliveries yet.' : 'No delivery has been assigned to you yet.' %>
+  </div>
+<% } else { %>
+  <div class="row g-3">
+    <% orders.forEach(o => { %>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <h5 class="mb-1"><%= o.crop ? o.crop.name : 'Crop removed' %> · <%= o.quantity %> kg</h5>
+              <%- include('../partials/statusBadge', { status: o.status }) %>
+            </div>
+            <small class="text-muted"><%= o.trackingId || '' %></small>
+
+            <hr class="my-2">
+            <div class="mb-2">
+              <strong>📦 Pickup</strong><br>
+              <%= o.kisan ? o.kisan.name : '-' %>
+              <% if (o.kisan && o.kisan.businessName) { %>(<%= o.kisan.businessName %>)<% } %>
+              <% if (o.kisan && o.kisan.village) { %>, <%= o.kisan.village %><% } %>
+              <% if (o.crop && o.crop.location) { %><br><small class="text-muted"><%= o.crop.location %></small><% } %>
+              <% if (o.kisan) { %><br><a href="tel:<%= o.kisan.phone %>"><i class="fa-solid fa-phone"></i> <%= o.kisan.phone %></a><% } %>
+              <% if (o.crop && Number.isFinite(o.crop.lat) && Number.isFinite(o.crop.lng)) { %>
+                <br><a href="https://www.google.com/maps?q=<%= o.crop.lat %>,<%= o.crop.lng %>" target="_blank" rel="noopener">
+                  <i class="fa-solid fa-map-location-dot"></i> Open map</a>
+              <% } %>
+            </div>
+
+            <div class="mb-2">
+              <strong>🏠 Drop</strong><br>
+              <%= o.buyer ? o.buyer.name : '-' %><br>
+              <%= o.deliveryAddress || '' %>, <%= o.deliveryCity || '' %>
+              <% if (o.distanceKm != null) { %><small class="text-muted"> (~<%= o.distanceKm %> km)</small><% } %>
+              <% if (o.buyer) { %><br><a href="tel:<%= o.buyer.phone %>"><i class="fa-solid fa-phone"></i> <%= o.buyer.phone %></a><% } %>
+              <br><a href="https://www.google.com/maps/search/?api=1&query=<%= encodeURIComponent((o.deliveryAddress || '') + ' ' + (o.deliveryCity || '')) %>"
+                target="_blank" rel="noopener"><i class="fa-solid fa-map-location-dot"></i> Open map</a>
+            </div>
+
+            <div class="p-2 rounded bg-light">
+              <% if (o.paymentMethod === 'cod' && o.paymentStatus !== 'paid') { %>
+                💵 <strong>Collect cash: ₹<%= o.totalPrice %></strong>
+              <% } else { %>
+                ✅ Already paid (₹<%= o.totalPrice %>)
+              <% } %>
+            </div>
+
+            <% if (o.deliveryIssue && o.deliveryIssue.reason) { %>
+              <div class="alert alert-warning py-2 mt-2 mb-0 small">
+                ⚠ Reported: <%= o.deliveryIssue.reason %><%= o.deliveryIssue.note ? ' (' + o.deliveryIssue.note + ')' : '' %>.
+                Your manager has been informed.
+              </div>
+            <% } %>
+          </div>
+
+          <% if (tab === 'active') { %>
+            <div class="card-footer bg-white border-0 pb-3">
+              <% if (o.status === 'accepted') { %>
+                <% if (o.paymentMethod === 'online' && o.paymentStatus !== 'paid') { %>
+                  <small class="text-danger">Waiting for payment verification. Do not pick up yet.</small>
+                <% } else { %>
+                  <form action="/delivery/orders/<%= o._id %>/pickup?_method=PATCH" method="POST">
+                    <button class="btn btn-primary w-100">Picked up the goods</button>
+                  </form>
+                <% } %>
+
+              <% } else if (o.status === 'shipped') { %>
+                <form action="/delivery/orders/<%= o._id %>/deliver?_method=PATCH" method="POST" class="d-flex gap-2 mb-2">
+                  <input name="code" class="form-control" inputmode="numeric" pattern="\d{4}" maxlength="4"
+                    placeholder="Buyer's 4-digit code" required>
+                  <button class="btn btn-success">Delivered</button>
+                </form>
+
+                <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse"
+                  data-bs-target="#fail-<%= o._id %>">Delivery failed</button>
+
+                <div class="collapse mt-2" id="fail-<%= o._id %>">
+                  <form action="/delivery/orders/<%= o._id %>/fail?_method=PATCH" method="POST" class="d-grid gap-2">
+                    <select name="reason" class="form-select form-select-sm" required>
+                      <option value="">Choose a reason</option>
+                      <% failReasons.forEach(r => { %><option value="<%= r %>"><%= r %></option><% }) %>
+                    </select>
+                    <input name="note" class="form-control form-control-sm" maxlength="200" placeholder="Note (optional)">
+                    <button class="btn btn-sm btn-danger">Report failed delivery</button>
+                  </form>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<script>
+  // live location sharing (runs only while the partner keeps this page open)
+  (function () {
+    const toggle = document.getElementById('shareLoc');
+    const status = document.getElementById('shareStatus');
+    if (!toggle) return;
+
+    let watchId = null;
+    let lastSent = 0;
+
+    function stop() {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      status.textContent = 'Location sharing is off. Keep this page open while sharing.';
+    }
+
+    function start() {
+      if (!navigator.geolocation) {
+        status.textContent = 'This device does not support location.';
+        toggle.checked = false;
+        return;
+      }
+      status.textContent = 'Getting your location...';
+      watchId = navigator.geolocation.watchPosition(async (pos) => {
+        const now = Date.now();
+        if (now - lastSent < 15000) return;
+        lastSent = now;
+        try {
+          await fetch('/delivery/location', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+          });
+          status.textContent = 'Sharing live location. Last update ' + new Date().toLocaleTimeString();
+        } catch (e) { /* try again on the next update */ }
+      }, () => {
+        status.textContent = 'Location is blocked. Allow location access for this site in the browser.';
+        toggle.checked = false;
+        try { localStorage.setItem('shareLoc', '0'); } catch (e) { }
+        stop();
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+    }
+
+    toggle.addEventListener('change', () => {
+      try { localStorage.setItem('shareLoc', toggle.checked ? '1' : '0'); } catch (e) { }
+      toggle.checked ? start() : stop();
+    });
+
+    // keep sharing after the page reloads (for example after tapping a button)
+    try {
+      if (localStorage.getItem('shareLoc') === '1') { toggle.checked = true; start(); }
+    } catch (e) { }
+  })();
+</script>

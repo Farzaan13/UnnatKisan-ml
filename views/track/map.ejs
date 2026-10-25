@@ -1,0 +1,72 @@
+<% layout('/layouts/boilerplate') %>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Track delivery 📍</h3>
+  <button class="btn btn-outline-secondary btn-sm" type="button" onclick="history.back()">Back</button>
+</div>
+
+<div class="card p-3 mb-3">
+  <div id="tInfo" class="mb-1">Loading...</div>
+  <small class="text-muted" id="tUpdated"></small>
+</div>
+
+<div id="tMap" style="height: 420px; border-radius: 12px;" class="border"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+  (function () {
+    const orderId = '<%= orderId %>';
+    const info = document.getElementById('tInfo');
+    const updated = document.getElementById('tUpdated');
+
+    const map = L.map('tMap').setView([22.5, 79], 5);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const emoji = (e) => L.divIcon({ html: '<div style="font-size:26px">' + e + '</div>', className: '', iconSize: [30, 30], iconAnchor: [15, 15] });
+    let pickupM = null, dropM = null, partnerM = null, fitted = false;
+
+    function place(marker, pos, icon, label) {
+      if (!pos) return marker;
+      if (!marker) marker = L.marker([pos.lat, pos.lng], { icon }).addTo(map);
+      else marker.setLatLng([pos.lat, pos.lng]);
+      marker.bindTooltip(label);
+      return marker;
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/track/' + orderId + '/data');
+        const d = await r.json();
+        if (!r.ok) { info.textContent = d.error || 'Could not load tracking.'; return; }
+
+        pickupM = place(pickupM, d.pickup, emoji('📦'), 'Pickup: ' + d.pickup?.label);
+        dropM = place(dropM, d.drop, emoji('🏠'), 'Drop: ' + d.drop?.label + ' (city centre)');
+        partnerM = place(partnerM, d.loc, emoji('🚚'), d.partner ? d.partner.name : 'Delivery partner');
+
+        let text = d.cropName + ' · status: ' + d.status;
+        if (d.partner) text += ' · partner: ' + d.partner.name + ' (' + d.partner.phone + ')';
+        info.textContent = text;
+
+        if (d.status === 'delivered') updated.textContent = 'This order has been delivered.';
+        else if (d.loc) updated.textContent = 'Partner location updated at ' + new Date(d.loc.at).toLocaleTimeString();
+        else updated.textContent = d.status === 'shipped'
+          ? 'The delivery partner has not shared a live location yet.'
+          : 'Live tracking starts after the goods are picked up.';
+
+        if (!fitted) {
+          const pts = [d.pickup, d.drop, d.loc].filter(Boolean).map((p) => [p.lat, p.lng]);
+          if (pts.length) { map.fitBounds(pts, { padding: [40, 40], maxZoom: 13 }); fitted = true; }
+        }
+      } catch (e) {
+        updated.textContent = 'Network problem. Trying again...';
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
+  })();
+</script>

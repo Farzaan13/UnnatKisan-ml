@@ -94,25 +94,33 @@
                         <button class="btn btn-sm btn-outline-danger">Reject</button>
                       </form>
                       <% } else if (o.status==='accepted' ) { %>
-                        <form action="/kisan/orders/<%= o._id %>/ship?_method=PATCH" method="POST" class="d-inline">
-                          <button class="btn btn-sm btn-primary">Shipped</button>
-                        </form>
-
-                        <% if (o.paymentStatus==='failed' ) { %>
-                          <form action="/kisan/orders/<%= o._id %>/reject?_method=PATCH" method="POST" class="d-inline"
-                            onsubmit="return confirm('Payment fail hui hai. Order reject karke stock wapas karein?');">
-                            <button class="btn btn-sm btn-outline-danger">Reject order</button>
-                          </form>
-                          <% } %>
-                            <% } else if (o.status==='shipped' ) { %>
-                              <form action="/kisan/orders/<%= o._id %>/deliver?_method=PATCH" method="POST"
-                                class="d-inline">
-                                <button class="btn btn-sm btn-success">Delivered</button>
-                              </form>
-                              <% } else { %>
-                                <span class="text-muted">-</span>
-                                <% } %>
+                        <% if (o.deliveryPartner) { %>
+                          <small class="text-muted">🚚 <%= o.deliveryPartner.name %> pickup karega</small>
+                          <% } else { %>
+                            <small class="text-muted">Delivery partner assign hone ka intezaar</small>
+                            <% } %>
+                              <% } else if (o.status==='shipped' ) { %>
+                                <small class="text-muted">🚚 Raste mein
+                                  <% if (o.deliveryPartner) { %>(<%= o.deliveryPartner.name %>)<% } %>
+                                </small>
+                                <% } else { %>
+                                  <span class="text-muted">-</span>
+                                  <% } %>
                   </td>
+
+                  <% if (o.status==='shipped' ) { %>
+                    <% if (o.deliveryCode) { %>
+                      <div class="alert alert-success py-2 px-3 mt-2 mb-0 small">
+                        🔐 Delivery code: <strong class="fs-5">
+                          <%= o.deliveryCode %>
+                        </strong><br>
+                        Share it only with the delivery partner when you receive your order.
+                      </div>
+                      <% } %>
+                        <a href="/track/<%= o._id %>" class="btn btn-sm btn-outline-primary mt-2">
+                          <i class="fa-solid fa-location-dot"></i> Track delivery
+                        </a>
+                        <% } %>
                 </tr>
                 <% }) %>
             </tbody>

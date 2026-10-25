@@ -109,6 +109,9 @@ app.get('/', async (req, res) => {
   });
 });
 
+app.use('/delivery', require('./routes/delivery'));
+app.use('/admin/delivery', require('./routes/deliveryManage')('admin'));
+app.use('/buyer/delivery', require('./routes/deliveryManage')('bulkbuyer'));
 app.use('/admin', require('./routes/admin'));
 app.use('/', require('./routes/auth'));
 app.use('/kisan', require('./routes/kisan'));

@@ -6,6 +6,7 @@ const User = require('../models/User');
 const { isLoggedIn, allowRoles } = require('../middleware/auth');
 const { orderRules, checkoutRules, handleErrors } = require('../middleware/validators');
 const uploadImage = require('../middleware/upload');
+const { deliveryOwner } = require('../utils/delivery');
 
 const uploadBuffer = require('../utils/cloudinary');
 const { CITY_NAMES, CITIES } = require('../utils/cities');
@@ -91,6 +92,7 @@ module.exports = (role) => {
     const orders = await Order.find({ buyer: req.session.user.id })
       .populate('crop', 'name')
       .populate('kisan', 'name phone village')
+      .populate('deliveryPartner', 'name phone')
       .sort({ createdAt: -1 });
     res.render('buyer/orders', { title: 'Mere orders', orders });
   });
@@ -124,7 +126,7 @@ module.exports = (role) => {
 
       // online payment sirf bulk buyer ke liye
       const method = isBulk && req.body.paymentMethod === 'online' ? 'online' : 'cod';
-      const dropUpload = () => {  };
+      const dropUpload = () => { };
       if (method !== 'online') dropUpload();
 
       const crop = mongoose.isValidObjectId(id) ? await Crop.findById(id) : null;
@@ -162,6 +164,7 @@ module.exports = (role) => {
           quantity: qty,
           totalPrice: qty * crop.priceFor(role),
           orderType: isBulk ? 'bulk' : 'retail',
+          ...deliveryOwner({ buyerRole: role, buyerId: req.session.user.id, crop }),
           deliveryCity,
           deliveryAddress,
           distanceKm: roadKmToCity(crop.lat, crop.lng, deliveryCity),
@@ -190,6 +193,7 @@ module.exports = (role) => {
         .populate('crop', 'name category')
         .populate('kisan', 'name phone village fpoName')
         .populate('buyer', 'name phone email businessName')
+        .populate('deliveryPartner', 'name phone')
       : null;
 
     if (!order) {
@@ -236,7 +240,7 @@ module.exports = (role) => {
     const cart = cartOf(req);
     const ids = Object.keys(cart).filter((k) => mongoose.isValidObjectId(k));
     const crops = ids.length
-          ? await Crop.find({ _id: { $in: ids }, verified: 'verified' }).populate('kisan', 'name village')
+      ? await Crop.find({ _id: { $in: ids }, verified: 'verified' }).populate('kisan', 'name village')
       : [];
 
     // jo crops ab maujood nahi, unhe cart se hata do
@@ -286,7 +290,7 @@ module.exports = (role) => {
   router.post('/cart/add/:id', async (req, res) => {
     const { id } = req.params;
     const crop = mongoose.isValidObjectId(id) ? await Crop.findById(id) : null;
-      if (!crop || crop.verified !== 'verified') {
+    if (!crop || crop.verified !== 'verified') {
       req.flash('error', 'Crop not found');
       return go(req, res, base + '/dashboard');
     }
@@ -323,8 +327,8 @@ module.exports = (role) => {
     const { id } = req.params;
     const cart = cartOf(req);
     const crop = mongoose.isValidObjectId(id) && cart[id]
-  ? await Crop.findOne({ _id: id, verified: 'verified' })
-  : null;
+      ? await Crop.findOne({ _id: id, verified: 'verified' })
+      : null;
 
     if (!crop) {
       req.flash('error', 'This item is not in your cart');
@@ -365,7 +369,7 @@ module.exports = (role) => {
         return go(req, res, base + '/cart');
       }
 
-            const crops = await Crop.find({ _id: { $in: ids }, verified: 'verified' });
+      const crops = await Crop.find({ _id: { $in: ids }, verified: 'verified' });
       const { deliveryCity, deliveryAddress } = req.body;
       const method = isBulk && req.body.paymentMethod === 'online' ? 'online' : 'cod';
       const utrOf = (kisanId) => (req.body['utr_' + kisanId] || '').trim();
@@ -413,6 +417,7 @@ module.exports = (role) => {
             quantity: qty,
             totalPrice: qty * crop.priceFor(role),
             orderType: isBulk ? 'bulk' : 'retail',
+            ...deliveryOwner({ buyerRole: role, buyerId: req.session.user.id, crop }),
             deliveryCity,
             deliveryAddress,
             distanceKm: roadKmToCity(crop.lat, crop.lng, deliveryCity),

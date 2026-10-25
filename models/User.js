@@ -1,4 +1,3 @@
-// models/User.js
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
@@ -8,7 +7,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: {
     type: String,
-    enum: ['customer', 'bulkbuyer', 'kisan', 'admin'],
+    enum: ['customer', 'bulkbuyer', 'kisan', 'admin', 'delivery'],
     required: true
   },
   // sirf kisan ke liye
@@ -17,6 +16,11 @@ const userSchema = new mongoose.Schema({
   // sirf bulkbuyer ke liye
   businessName: String,
   gstNumber: String,
+
+  // sirf delivery partner ke liye
+  vehicle: String,                                                   // bike, auto, tempo...
+  managedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },  // kisne banaya (admin ya bulkbuyer)
+  managedByRole: { type: String, enum: ['admin', 'bulkbuyer'] },
 
   // admin block system
   isBlocked:   { type: Boolean, default: false },

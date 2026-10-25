@@ -31,13 +31,14 @@ router.post('/chatbot', express.json({ limit: '10kb' }), async (req, res) => {
   chatHits.set(uid, hits);
 
   try {
-      res.json(await chatCrop(req.body.messages, req.body.voice === true, req.body.lang));
+    res.json(await chatCrop(req.body.messages, req.body.voice === true, req.body.lang, req.session.user.id));
   } catch (e) {
     console.error('chatbot:', e.message);
     res.status(500).json({ reply: 'Abhi chatbot kaam nahi kar raha. Form se crop add kar lo.', draft: null });
   }
 });
-const removeImage = (url) => {removeByUrl(url);
+const removeImage = (url) => {
+  removeByUrl(url);
 };
 
 // kisan sirf apni hi crop edit/delete kar sake
@@ -70,8 +71,8 @@ router.post('/crops',
   uploadImage, cropRules, handleErrors('/kisan/crops/new'),
   async (req, res) => {
     const { name, category, price, quantity, bulkPrice, minBulkQty, harvestDate, location, lat, lng, description } = req.body;
-  let image;
-  if(req.file) image = await uploadBuffer(req.file, 'crop').secure_url;
+    let image;
+    if (req.file) image = await uploadBuffer(req.file, 'crop').secure_url;
     await Crop.create({
       name, category, price, quantity, bulkPrice,
       sellerRole: req.session.user.role,
@@ -102,7 +103,7 @@ router.put('/crops/:id',
     const crop = req.crop;
     const { name, category, price, quantity, bulkPrice, minBulkQty, harvestDate, location, lat, lng, description } = req.body;
 
-        Object.assign(crop, {
+    Object.assign(crop, {
       name, category, price, quantity, bulkPrice, location, description,
       lat: Number(lat), lng: Number(lng),
       minBulkQty: minBulkQty || crop.minBulkQty,
@@ -110,7 +111,7 @@ router.put('/crops/:id',
       verified: 'pending',      // edit ke baad admin dobara verify karega
       verifyNote: ''
     });
-        req.flash('success', 'Crop updated. It will be visible again after admin verification');
+    req.flash('success', 'Crop updated. It will be visible again after admin verification');
 
     if (req.file) {
       const up = await uploadBuffer(req.file, 'crop');
@@ -126,7 +127,7 @@ router.put('/crops/:id',
 
 // Delete
 router.delete('/crops/:id', loadOwnCrop, async (req, res) => {
-   await removeImage(req.crop.image);
+  await removeImage(req.crop.image);
   await req.crop.deleteOne();
   req.flash('success', 'Crop deleted successfully');
   res.redirect('/kisan/dashboard');
@@ -137,6 +138,7 @@ router.get('/orders', async (req, res) => {
   const orders = await Order.find({ kisan: req.session.user.id })
     .populate('buyer', 'name phone role businessName')
     .populate('crop', 'name')
+    .populate('deliveryPartner', 'name phone')
     .sort({ createdAt: -1 });
   res.render('kisan/orders', { title: 'Aaye hue orders', orders });
 });
@@ -145,8 +147,7 @@ router.get('/orders', async (req, res) => {
 const transitions = {
   accept: { from: 'pending', to: 'accepted' },
   reject: { from: 'pending', to: 'rejected' },
-  ship: { from: 'accepted', to: 'shipped' },
-  deliver: { from: 'shipped', to: 'delivered' },
+
 };
 
 router.patch('/orders/:id/:action', async (req, res) => {
