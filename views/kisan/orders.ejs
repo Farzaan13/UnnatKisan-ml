@@ -95,9 +95,9 @@
                       </form>
                       <% } else if (o.status==='accepted' ) { %>
                         <% if (o.deliveryPartner) { %>
-                          <small class="text-muted">🚚 <%= o.deliveryPartner.name %> pickup karega</small>
+                          <small class="text-muted">🚚 <%= o.deliveryPartner.name %> will pickup </small>
                           <% } else { %>
-                            <small class="text-muted">Delivery partner assign hone ka intezaar</small>
+                            <small class="text-muted">Waiting for a delivery partner to be assigned</small>
                             <% } %>
                               <% } else if (o.status==='shipped' ) { %>
                                 <small class="text-muted">🚚 Raste mein
