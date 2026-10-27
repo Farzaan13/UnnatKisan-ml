@@ -101,86 +101,283 @@ function planRoute(pickup, orders) {
 }
 
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
+// Replace everything from const ML_SERVICE_URL to the bottom of utils/geo.js
+const CITY_COORDS = {
+  kanpur: [26.4499, 80.3319],
+  lucknow: [26.8467, 80.9462],
+  varanasi: [25.3176, 82.9739],
+  agra: [27.1767, 78.0081],
+  prayagraj: [25.4358, 81.8463],
+  allahabad: [25.4358, 81.8463],
+  meerut: [28.9845, 77.7064],
+  noida: [28.5355, 77.3910],
+  gorakhpur: [26.7606, 83.3732],
+  delhi: [28.6139, 77.2090],
+  jhansi: [25.4484, 78.5685],
+  bareilly: [28.3670, 79.4304],
+  aligarh: [27.8974, 78.0880],
+  moradabad: [28.8386, 78.7733],
+  mathura: [27.4924, 77.6737],
+  ayodhya: [26.7922, 82.1998],
+  unnao: [26.5393, 80.4878]
+};
 
-// 1. Calls Python ML Service to rank closest farmers & build Virtual FPO pools for buyers
+const PERISHABILITY_WEIGHT = {
+  vegetable: 1.8,
+  fruit: 1.6,
+  other: 1.2,
+  pulse: 0.6,
+  grain: 0.4
+};
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371.0;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const straightKm = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  return +(straightKm * 1.22).toFixed(2); // 1.22x road winding factor
+}
+
+function resolveCoords(locationStr, lat, lng, seedStr = '') {
+  if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+    return [Number(lat), Number(lng)];
+  }
+  const locLower = (locationStr || 'kanpur').toLowerCase();
+  for (const [city, coords] of Object.entries(CITY_COORDS)) {
+    if (locLower.includes(city)) {
+      // Slight deterministic village offset if exact GPS wasn't saved
+      let hash = 0;
+      for (let i = 0; i < seedStr.length; i++) hash = (hash * 31 + seedStr.charCodeAt(i)) % 100;
+      const offsetLat = ((hash % 15) - 7) * 0.008;
+      const offsetLng = (((hash * 3) % 15) - 7) * 0.008;
+      return [+(coords[0] + offsetLat).toFixed(5), +(coords[1] + offsetLng).toFixed(5)];
+    }
+  }
+  return [26.4499, 80.3319];
+}
+
+function computeSpoilageRisk(category, distanceKm, daysSinceHarvest = 1) {
+  const weight = PERISHABILITY_WEIGHT[(category || 'vegetable').toLowerCase()] || 1.2;
+  const transitHours = distanceKm / 38.0;
+  const rawScore = weight * (transitHours * 4.5 + Math.max(0, daysSinceHarvest) * 5.0);
+  return +Math.min(95.0, Math.max(2.0, rawScore)).toFixed(1);
+}
+
+// 1. Buyer & Bulk Buyer: Closest Farmer & Virtual FPO Pooler
 async function findClosestFarmersML({ buyerLat, buyerLng, cropFilter, requiredQtyKg, isBulkBuyer, crops }) {
-  const listings = (crops || []).map((c) => {
+  const bLat = Number(buyerLat) || 26.4499;
+  const bLng = Number(buyerLng) || 80.3319;
+  const filterStr = (cropFilter || '').trim().toLowerCase();
+  const ranked = [];
+
+  for (const c of crops || []) {
+    const cropName = c.name || 'Crop';
+    if (filterStr && !cropName.toLowerCase().includes(filterStr)) continue;
+
+    const kisanName = c.kisan && c.kisan.name ? c.kisan.name : 'Verified Kisan';
+    const [fLat, fLng] = resolveCoords(c.location, c.lat, c.lng, String(c._id || kisanName));
+    const distanceKm = haversineKm(bLat, bLng, fLat, fLng);
+    const etaMins = Math.max(15, Math.round((distanceKm / 38.0) * 60));
+
     const harvestDays = c.harvestDate
-      ? Math.max(0, Math.floor((Date.now() - new Date(c.harvestDate).getTime()) / (1000 * 60 * 60 * 24)))
+      ? Math.max(0, Math.min(7, Math.floor((Date.now() - new Date(c.harvestDate).getTime()) / (1000 * 60 * 60 * 24))))
       : 1;
-    return {
+
+    const spoilageRiskPct = computeSpoilageRisk(c.category, distanceKm, harvestDays);
+    const freshnessScore = +(100.0 - spoilageRiskPct).toFixed(1);
+
+    const transportCostKg = +Math.min(12.0, distanceKm * 0.035).toFixed(2);
+    const basePriceKg = isBulkBuyer && c.bulkPrice ? Number(c.bulkPrice) : Number(c.price) || 20;
+    const landedCostKg = +(basePriceKg + transportCostKg).toFixed(2);
+
+    const aiRankCost = +(distanceKm * 0.55 + landedCostKg * 1.2 + spoilageRiskPct * 0.4).toFixed(2);
+
+    ranked.push({
       cropId: String(c._id),
-      cropName: c.name || 'Crop',
+      cropName,
       category: c.category || 'vegetable',
-      kisanName: (c.kisan && c.kisan.name) ? c.kisan.name : 'Verified Kisan',
+      kisanName,
       location: c.location || 'Kanpur',
-      lat: c.lat || null,
-      lng: c.lng || null,
-      price: Number(c.price) || 20,
-      bulkPrice: c.bulkPrice ? Number(c.bulkPrice) : null,
-      quantity: Number(c.quantity) || 0,
-      daysSinceHarvest: harvestDays
+      lat: fLat,
+      lng: fLng,
+      distanceKm,
+      etaMins,
+      basePriceKg,
+      transportCostKg,
+      landedCostKg,
+      availableQtyKg: Number(c.quantity) || 0,
+      spoilageRiskPct,
+      freshnessScore,
+      aiRankCost
+    });
+  }
+
+  // Sort primarily by closest distance, breaking ties by AI rank cost
+  ranked.sort((a, b) => a.distanceKm - b.distanceKm || a.aiRankCost - b.aiRankCost);
+
+  if (ranked.length > 0) {
+    ranked[0].badge = '📍 Closest Farmer';
+    const bestVal = ranked.reduce((min, cur) => (cur.landedCostKg < min.landedCostKg ? cur : min), ranked[0]);
+    if (bestVal.cropId !== ranked[0].cropId) {
+      bestVal.badge = '💰 Best Landed Price';
+    } else {
+      ranked[0].badge = '🏆 Closest & Best Value';
+    }
+  }
+
+  // Virtual FPO Multi-Farmer Pooling for Bulk Buyers
+  const reqQty = Number(requiredQtyKg) || 0;
+  let remainingQty = reqQty;
+  const allocations = [];
+
+  if (reqQty > 0 && ranked.length > 0) {
+    for (const farmer of ranked) {
+      if (remainingQty <= 0) break;
+      const takeQtyKg = Math.min(farmer.availableQtyKg, remainingQty);
+      if (takeQtyKg > 0) {
+        allocations.push({
+          cropId: farmer.cropId,
+          kisanName: farmer.kisanName,
+          cropName: farmer.cropName,
+          location: farmer.location,
+          distanceKm: farmer.distanceKm,
+          takeQtyKg,
+          landedCostKg: farmer.landedCostKg,
+          subtotalRs: +(takeQtyKg * farmer.landedCostKg).toFixed(2),
+          lat: farmer.lat,
+          lng: farmer.lng
+        });
+        remainingQty -= takeQtyKg;
+      }
+    }
+  }
+
+  return {
+    totalMatches: ranked.length,
+    closestFarmer: ranked[0] || null,
+    farmers: ranked,
+    fpoPool: reqQty > 0
+      ? {
+          requestedQtyKg: reqQty,
+          fulfilledQtyKg: +(reqQty - Math.max(0, remainingQty)).toFixed(2),
+          farmersCount: allocations.length,
+          allocations
+        }
+      : null
+  };
+}
+
+// 2. Kisan Delivery Side: Perishability-Aware Multi-Stop Route Optimizer
+async function planRouteML(pickupCity = 'Kanpur', orders = []) {
+  const [startLat, startLng] = resolveCoords(pickupCity, null, null, pickupCity);
+
+  if (!orders || orders.length === 0) {
+    return {
+      pickupCity,
+      pickupCoords: [startLat, startLng],
+      totalKm: 0,
+      naiveKm: 0,
+      kmSaved: 0,
+      fuelSavedLiters: 0,
+      estimatedCostRs: 0,
+      orderedStops: []
+    };
+  }
+
+  const nodes = orders.map((o, i) => {
+    const cityStr = o.deliveryAddress || o.city || 'Lucknow';
+    const [sLat, sLng] = resolveCoords(cityStr, o.lat, o.lng, String(o._id || i));
+    const category = o.crop && o.crop.category ? o.crop.category : 'vegetable';
+    const perishabilityWeight = PERISHABILITY_WEIGHT[category.toLowerCase()] || 1.2;
+
+    return {
+      orderId: String(o._id),
+      buyerName: o.buyer && o.buyer.name ? o.buyer.name : 'Buyer',
+      cropName: o.crop && o.crop.name ? o.crop.name : 'Crop',
+      category,
+      quantityKg: Number(o.quantity) || 50,
+      city: cityStr,
+      lat: sLat,
+      lng: sLng,
+      perishabilityWeight
     };
   });
 
-  try {
-    const res = await fetch(`${ML_SERVICE_URL}/find-closest-farmers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        buyerLat: Number(buyerLat) || 26.4499,
-        buyerLng: Number(buyerLng) || 80.3319,
-        cropFilter: cropFilter || null,
-        requiredQtyKg: requiredQtyKg ? Number(requiredQtyKg) : null,
-        isBulkBuyer: Boolean(isBulkBuyer),
-        listings
-      }),
-      signal: AbortSignal.timeout(3500)
-    });
-    if (!res.ok) throw new Error('ML service error');
-    return await res.json();
-  } catch (err) {
-    console.warn('Closest-farmer ML fallback:', err.message);
-    return { totalMatches: 0, closestFarmer: null, farmers: [], fpoPool: null };
+  // Naive unoptimized route distance
+  let naiveKm = 0;
+  let cLat = startLat, cLng = startLng;
+  for (const n of nodes) {
+    naiveKm += haversineKm(cLat, cLng, n.lat, n.lng);
+    cLat = n.lat;
+    cLng = n.lng;
   }
-}
 
-// 2. Calls Python ML Service for perishability-aware multi-stop route optimization
-async function planRouteML(pickupCity, orders) {
-  const stops = (orders || []).map((o) => ({
-    orderId: String(o._id),
-    buyerName: (o.buyer && o.buyer.name) ? o.buyer.name : 'Buyer',
-    cropName: (o.crop && o.crop.name) ? o.crop.name : 'Crop',
-    category: (o.crop && o.crop.category) ? o.crop.category : 'vegetable',
-    quantityKg: Number(o.quantity) || 50,
-    city: o.deliveryAddress || o.city || 'Lucknow',
-    lat: o.lat || null,
-    lng: o.lng || null
-  }));
+  // Perishability-Weighted Nearest Neighbor Solver
+  const unvisited = [...nodes];
+  const orderedStops = [];
+  cLat = startLat;
+  cLng = startLng;
+  let totalKm = 0;
+  let cumulativeMins = 0;
 
-  try {
-    const res = await fetch(`${ML_SERVICE_URL}/optimize-route`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pickupCity: pickupCity || 'Kanpur',
-        stops
-      }),
-      signal: AbortSignal.timeout(3500)
+  while (unvisited.length > 0) {
+    let bestIdx = 0;
+    let bestScore = Infinity;
+
+    for (let idx = 0; idx < unvisited.length; idx++) {
+      const cand = unvisited[idx];
+      const d = haversineKm(cLat, cLng, cand.lat, cand.lng);
+      const priorityFactor = 1.0 - Math.min(0.3, (cand.perishabilityWeight - 0.4) * 0.18);
+      const score = d * priorityFactor;
+      if (score < bestScore) {
+        bestScore = score;
+        bestIdx = idx;
+      }
+    }
+
+    const chosen = unvisited.splice(bestIdx, 1)[0];
+    const legKm = haversineKm(cLat, cLng, chosen.lat, chosen.lng);
+    totalKm += legKm;
+    const legMins = Math.max(10, Math.round((legKm / 38.0) * 60));
+    cumulativeMins += legMins;
+    const spoilageRiskPct = computeSpoilageRisk(chosen.category, totalKm, 1);
+
+    orderedStops.push({
+      ...chosen,
+      stopNumber: orderedStops.length + 1,
+      legKm: +legKm.toFixed(2),
+      cumulativeKm: +totalKm.toFixed(2),
+      etaMins: cumulativeMins,
+      spoilageRiskPct,
+      priorityBadge: chosen.perishabilityWeight >= 1.5 ? '🔥 High Perishability Priority' : '📦 Standard Load'
     });
-    if (!res.ok) throw new Error('ML route error');
-    return await res.json();
-  } catch (err) {
-    console.warn('Route ML fallback:', err.message);
-    return null;
+
+    cLat = chosen.lat;
+    cLng = chosen.lng;
   }
+
+  const kmSaved = +Math.max(0, naiveKm - totalKm).toFixed(2);
+  const fuelSavedLiters = +(kmSaved / 12.0).toFixed(2);
+
+  return {
+    pickupCity,
+    pickupCoords: [startLat, startLng],
+    totalKm: +totalKm.toFixed(2),
+    naiveKm: +naiveKm.toFixed(2),
+    kmSaved,
+    fuelSavedLiters,
+    estimatedCostRs: Math.round(totalKm * 14.0),
+    orderedStops
+  };
 }
 
 // Single combined export at the very end of utils/geo.js
 module.exports = {
   planRoute,
   findClosestFarmersML,
-  roadKmToCity,
   planRouteML
 };
