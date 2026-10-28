@@ -379,5 +379,6 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
 module.exports = {
   planRoute,
   findClosestFarmersML,
-  planRouteML
+  planRouteML,
+  roadKmToCity
 };
