@@ -1,3 +1,4 @@
+// utils/geo.js
 const { CITIES } = require('./cities');
 
 const ROAD_FACTOR = 1.3;  // seedhi doori ko road distance mein badalne ka andaza
@@ -5,12 +6,13 @@ const COST_PER_KM = 12;   // ₹ per km, apne hisaab se badlo
 
 const toRad = (d) => (d * Math.PI) / 180;
 
-// do coordinates ke beech road distance ka andaza (km)
+// do coordinates ke beech seedhi distance (km)
 function haversineKm(lat1, lng1, lat2, lng2) {
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
-  const h = Math.sin(dLat / 2) ** 2 +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
@@ -24,10 +26,12 @@ function roadKmToCity(fromLat, fromLng, city) {
 function dist(a, b) {
   if (a === b) return 0;
   const p = CITIES[a], q = CITIES[b];
+  if (!p || !q) return 0;
   const dLat = toRad(q.lat - p.lat);
   const dLng = toRad(q.lng - p.lng);
-  const h = Math.sin(dLat / 2) ** 2 +
-            Math.cos(toRad(p.lat)) * Math.cos(toRad(q.lat)) * Math.sin(dLng / 2) ** 2;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(p.lat)) * Math.cos(toRad(q.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h)) * ROAD_FACTOR;
 }
 
@@ -41,7 +45,9 @@ function nearestNeighbour(start, cities) {
   while (left.length) {
     const cur = route[route.length - 1];
     let best = 0;
-    left.forEach((c, i) => { if (dist(cur, c) < dist(cur, left[best])) best = i; });
+    left.forEach((c, i) => {
+      if (dist(cur, c) < dist(cur, left[best])) best = i;
+    });
     route.push(left.splice(best, 1)[0]);
   }
   return route;
@@ -56,9 +62,17 @@ function twoOpt(route) {
     improved = false;
     for (let i = 1; i < best.length - 1; i++) {
       for (let j = i + 1; j < best.length; j++) {
-        const cand = [...best.slice(0, i), ...best.slice(i, j + 1).reverse(), ...best.slice(j + 1)];
+        const cand = [
+          ...best.slice(0, i),
+          ...best.slice(i, j + 1).reverse(),
+          ...best.slice(j + 1)
+        ];
         const len = length(cand);
-        if (len < bestLen - 1e-6) { best = cand; bestLen = len; improved = true; }
+        if (len < bestLen - 1e-6) {
+          best = cand;
+          bestLen = len;
+          improved = true;
+        }
       }
     }
   }
@@ -91,17 +105,21 @@ function planRoute(pickup, orders) {
   const naiveKm = Math.round(length(naive));
 
   return {
-    stops, skipped, totalKm, naiveKm,
+    stops,
+    skipped,
+    totalKm,
+    naiveKm,
     savedKm: naiveKm - totalKm,
     savedPct: naiveKm ? Math.round(((naiveKm - totalKm) / naiveKm) * 100) : 0,
     cost: totalKm * COST_PER_KM,
     naiveCost: naiveKm * COST_PER_KM,
-    costPerKm: COST_PER_KM,
+    costPerKm: COST_PER_KM
   };
 }
 
-
-// Replace everything from const ML_SERVICE_URL to the bottom of utils/geo.js
+// =========================================================================
+// ML CLOSEST FARMER, VIRTUAL FPO POOLING & PERISHABILITY ROUTE OPTIMIZATION
+// =========================================================================
 const CITY_COORDS = {
   kanpur: [26.4499, 80.3319],
   lucknow: [26.8467, 80.9462],
@@ -130,26 +148,21 @@ const PERISHABILITY_WEIGHT = {
   grain: 0.4
 };
 
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371.0;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const straightKm = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+function roadDistanceKm(lat1, lon1, lat2, lon2) {
+  const straightKm = haversineKm(lat1, lon1, lat2, lon2);
   return +(straightKm * 1.22).toFixed(2); // 1.22x road winding factor
 }
 
 function resolveCoords(locationStr, lat, lng, seedStr = '') {
-  if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+  if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng) && Number(lat) !== 0 && Number(lng) !== 0) {
     return [Number(lat), Number(lng)];
+  }
+  if (locationStr && CITIES && CITIES[locationStr]) {
+    return [CITIES[locationStr].lat, CITIES[locationStr].lng];
   }
   const locLower = (locationStr || 'kanpur').toLowerCase();
   for (const [city, coords] of Object.entries(CITY_COORDS)) {
     if (locLower.includes(city)) {
-      // Slight deterministic village offset if exact GPS wasn't saved
       let hash = 0;
       for (let i = 0; i < seedStr.length; i++) hash = (hash * 31 + seedStr.charCodeAt(i)) % 100;
       const offsetLat = ((hash % 15) - 7) * 0.008;
@@ -180,7 +193,7 @@ async function findClosestFarmersML({ buyerLat, buyerLng, cropFilter, requiredQt
 
     const kisanName = c.kisan && c.kisan.name ? c.kisan.name : 'Verified Kisan';
     const [fLat, fLng] = resolveCoords(c.location, c.lat, c.lng, String(c._id || kisanName));
-    const distanceKm = haversineKm(bLat, bLng, fLat, fLng);
+    const distanceKm = roadDistanceKm(bLat, bLng, fLat, fLng);
     const etaMins = Math.max(15, Math.round((distanceKm / 38.0) * 60));
 
     const harvestDays = c.harvestDate
@@ -289,7 +302,7 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
   }
 
   const nodes = orders.map((o, i) => {
-    const cityStr = o.deliveryAddress || o.city || 'Lucknow';
+    const cityStr = o.deliveryCity || o.deliveryAddress || o.city || 'Lucknow';
     const [sLat, sLng] = resolveCoords(cityStr, o.lat, o.lng, String(o._id || i));
     const category = o.crop && o.crop.category ? o.crop.category : 'vegetable';
     const perishabilityWeight = PERISHABILITY_WEIGHT[category.toLowerCase()] || 1.2;
@@ -311,7 +324,7 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
   let naiveKm = 0;
   let cLat = startLat, cLng = startLng;
   for (const n of nodes) {
-    naiveKm += haversineKm(cLat, cLng, n.lat, n.lng);
+    naiveKm += roadDistanceKm(cLat, cLng, n.lat, n.lng);
     cLat = n.lat;
     cLng = n.lng;
   }
@@ -330,7 +343,7 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
 
     for (let idx = 0; idx < unvisited.length; idx++) {
       const cand = unvisited[idx];
-      const d = haversineKm(cLat, cLng, cand.lat, cand.lng);
+      const d = roadDistanceKm(cLat, cLng, cand.lat, cand.lng);
       const priorityFactor = 1.0 - Math.min(0.3, (cand.perishabilityWeight - 0.4) * 0.18);
       const score = d * priorityFactor;
       if (score < bestScore) {
@@ -340,7 +353,7 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
     }
 
     const chosen = unvisited.splice(bestIdx, 1)[0];
-    const legKm = haversineKm(cLat, cLng, chosen.lat, chosen.lng);
+    const legKm = roadDistanceKm(cLat, cLng, chosen.lat, chosen.lng);
     totalKm += legKm;
     const legMins = Math.max(10, Math.round((legKm / 38.0) * 60));
     cumulativeMins += legMins;
@@ -370,14 +383,16 @@ async function planRouteML(pickupCity = 'Kanpur', orders = []) {
     naiveKm: +naiveKm.toFixed(2),
     kmSaved,
     fuelSavedLiters,
-    estimatedCostRs: Math.round(totalKm * 14.0),
+    estimatedCostRs: Math.round(totalKm * COST_PER_KM),
     orderedStops
   };
 }
 
-// Single combined export at the very end of utils/geo.js
 module.exports = {
+  haversineKm,
+  roadKmToCity,
   planRoute,
+  COST_PER_KM,
   findClosestFarmersML,
   planRouteML
 };
